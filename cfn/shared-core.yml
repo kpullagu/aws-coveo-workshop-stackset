@@ -1,0 +1,917 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Core infrastructure for Coveo + AWS Workshop - API Gateway, Lambdas, S3, Secrets'
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Description: Prefix for resource names
+
+  S3BucketName:
+    Type: String
+    Description: S3 bucket name for UI hosting (must be globally unique)
+
+  CfnTemplateBucket:
+    Type: String
+    Description: S3 bucket name containing CloudFormation templates and Lambda packages
+
+  CognitoUserPoolArn:
+    Type: String
+    Description: Cognito User Pool ARN for JWT authorizer
+
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID
+
+  CognitoClientId:
+    Type: String
+    Description: Cognito App Client ID
+
+  CoveoOrgId:
+    Type: String
+    Description: Coveo organization ID
+
+  CoveoAnswerConfigId:
+    Type: String
+    Description: Coveo Answer API configuration ID
+
+  McpServerUrl:
+    Type: String
+    Default: ''
+    Description: MCP server URL (optional, provided by AgentCore stack if deployed)
+
+Conditions:
+  HasMcpServer: !Not [!Equals [!Ref McpServerUrl, '']]
+
+Resources:
+  # ==========================================
+  # Secrets Manager & SSM Parameters
+  # ==========================================
+  
+  CoveoApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${StackPrefix}/coveo/search-api-key'
+      Description: Coveo Search API key for workshop
+      SecretString: 'PLACEHOLDER-UPDATE-WITH-REAL-KEY'
+
+  # Note: SSM parameters are now created by the seed-ssm-secrets.sh script
+  # This avoids CloudFormation issues with parameter creation and allows for easier updates
+
+  # ==========================================
+  # IAM Roles for Lambda Functions
+  # ==========================================
+
+  SearchProxyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-search-proxy-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CoveoApiKeySecret
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
+
+  PassagesProxyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-passages-proxy-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CoveoApiKeySecret
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
+
+  AnsweringProxyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-answering-proxy-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CoveoApiKeySecret
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
+
+  QuerySuggestProxyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-query-suggest-proxy-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CoveoApiKeySecret
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
+
+  HtmlProxyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-html-proxy-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CoveoApiKeySecret
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
+
+  PassageToolRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-passage-tool-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CoveoApiKeySecret
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
+
+  AgentCoreRuntimeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-agentcore-runtime-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - lambda.amazonaws.com
+                - bedrock.amazonaws.com
+                - bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CoveoApiKeySecret
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
+        - PolicyName: AgentCoreRuntimePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock/agentcore/*'
+              - Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                Resource: !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*'
+
+  # ==========================================
+  # Lambda Functions
+  # ==========================================
+
+  SearchProxyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-search-proxy'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt SearchProxyRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackPrefix
+          COVEO_ORG_ID: !Ref CoveoOrgId
+          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
+          COVEO_SEARCH_HUB: 'aws-workshop'
+          LOG_LEVEL: INFO
+      Code:
+        S3Bucket: !Ref CfnTemplateBucket
+        S3Key: lambdas/search_proxy.zip
+
+  SearchProxyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${SearchProxyFunction}'
+      RetentionInDays: 7
+
+  PassagesProxyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-passages-proxy'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt PassagesProxyRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackPrefix
+          COVEO_ORG_ID: !Ref CoveoOrgId
+          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
+          COVEO_SEARCH_HUB: 'aws-workshop'
+          LOG_LEVEL: INFO
+      Code:
+        S3Bucket: !Ref CfnTemplateBucket
+        S3Key: lambdas/passages_proxy.zip
+
+  PassagesProxyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${PassagesProxyFunction}'
+      RetentionInDays: 7
+
+  AnsweringProxyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-answering-proxy'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt AnsweringProxyRole.Arn
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackPrefix
+          COVEO_ORG_ID: !Ref CoveoOrgId
+          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_ANSWER_CONFIG_ID: !Ref CoveoAnswerConfigId
+          COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
+          COVEO_SEARCH_HUB: 'aws-workshop'
+          LOG_LEVEL: INFO
+      Code:
+        S3Bucket: !Ref CfnTemplateBucket
+        S3Key: lambdas/answering_proxy.zip
+
+  AnsweringProxyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AnsweringProxyFunction}'
+      RetentionInDays: 7
+
+  QuerySuggestProxyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-query-suggest-proxy'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt QuerySuggestProxyRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackPrefix
+          COVEO_ORG_ID: !Ref CoveoOrgId
+          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
+          COVEO_SEARCH_HUB: 'aws-workshop'
+          COVEO_PIPELINE: 'aws-workshop-pipeline'
+          LOG_LEVEL: INFO
+      Code:
+        S3Bucket: !Ref CfnTemplateBucket
+        S3Key: lambdas/query_suggest_proxy.zip
+
+  QuerySuggestProxyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${QuerySuggestProxyFunction}'
+      RetentionInDays: 7
+
+  HtmlProxyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-html-proxy'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt HtmlProxyRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackPrefix
+          COVEO_ORG_ID: !Ref CoveoOrgId
+          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
+          LOG_LEVEL: INFO
+      Code:
+        S3Bucket: !Ref CfnTemplateBucket
+        S3Key: lambdas/html_proxy.zip
+
+  HtmlProxyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${HtmlProxyFunction}'
+      RetentionInDays: 7
+
+  PassageToolFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-passage-tool'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt PassageToolRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackPrefix
+          LOG_LEVEL: INFO
+      Code:
+        S3Bucket: !Ref CfnTemplateBucket
+        S3Key: lambdas/coveo_passage_tool_py.zip
+
+  PassageToolLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${PassageToolFunction}'
+      RetentionInDays: 7
+
+  AgentCoreRuntimeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-agentcore-runtime'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt AgentCoreRuntimeRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackPrefix
+          LOG_LEVEL: INFO
+          AGENTCORE_RUNTIME_ARN_PARAM: !Sub '/${StackPrefix}/coveo/runtime-arn'
+          COVEO_ORG_ID: !Ref CoveoOrgId
+      Code:
+        S3Bucket: !Ref CfnTemplateBucket
+        S3Key: lambdas/agentcore_runtime_py.zip
+
+  AgentCoreRuntimeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AgentCoreRuntimeFunction}'
+      RetentionInDays: 7
+
+  # Bedrock Agent Chat Lambda (Lab 4 - multi-turn memory via Agent sessionId)
+  BedrockAgentChatRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-bedrock-agent-chat-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: InvokeBedrockAgent
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock-agent-runtime:InvokeAgent
+                  - bedrock:InvokeAgent
+                Resource: '*'  # Scope to specific agent ARN in production
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: 
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/agent-id'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/agent-alias-id'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/org-id'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CoveoApiKeySecret
+
+  BedrockAgentChatFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-bedrock-agent-chat'
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt BedrockAgentChatRole.Arn
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackPrefix
+          LOG_LEVEL: INFO
+      Code:
+        S3Bucket: !Ref CfnTemplateBucket
+        S3Key: lambdas/bedrock_agent_chat.zip
+
+  BedrockAgentChatLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${BedrockAgentChatFunction}'
+      RetentionInDays: 7
+
+  # ==========================================
+  # API Gateway HTTP API
+  # ==========================================
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${StackPrefix}-api'
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Amz-Date
+          - X-Api-Key
+          - X-Amz-Security-Token
+        MaxAge: 300
+
+  HttpApiDefaultStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: '$context.requestId $context.error.message $context.error.messageString'
+
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${StackPrefix}-api'
+      RetentionInDays: 7
+
+  CognitoAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      Name: !Sub '${StackPrefix}-cognito-authorizer'
+      ApiId: !Ref HttpApi
+      AuthorizerType: JWT
+      IdentitySource:
+        - '$request.header.Authorization'
+      JwtConfiguration:
+        Audience:
+          - !Ref CognitoClientId
+        Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}'
+      # Note: API Gateway JWT authorizer validates 'aud' claim for ID tokens
+      # For ACCESS tokens (which have 'client_id' instead of 'aud'), we rely on
+      # the issuer validation and signature verification
+
+  # ==========================================
+  # API Routes & Integrations
+  # ==========================================
+
+  # Health Check Route (no auth)
+  HealthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'GET /health'
+      Target: !Sub 'integrations/${HealthIntegration}'
+
+  HealthIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt SearchProxyFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  HealthPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SearchProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # Search Route
+  SearchRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /search'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${SearchIntegration}'
+
+  SearchIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt SearchProxyFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  SearchPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SearchProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # Passages Route
+  PassagesRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /passages'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${PassagesIntegration}'
+
+  PassagesIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt PassagesProxyFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  PassagesPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PassagesProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # Answer Route
+  AnswerRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /answer'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${AnswerIntegration}'
+
+  AnswerIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt AnsweringProxyFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  AnswerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AnsweringProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # Answering Route
+  AnsweringRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /answering'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${AnsweringIntegration}'
+
+  AnsweringIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt AnsweringProxyFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  AnsweringPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AnsweringProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # Chat Route (routes to different backends based on mode)
+  ChatRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /chat'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${ChatIntegration}'
+
+  ChatIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt AnsweringProxyFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  ChatPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AnsweringProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # Query Suggest Route
+  QuerySuggestRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /QuerySuggest'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${QuerySuggestIntegration}'
+
+  QuerySuggestIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${QuerySuggestProxyFunction.Arn}/invocations'
+      PayloadFormatVersion: '2.0'
+
+  QuerySuggestPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref QuerySuggestProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # HTML Route
+  HtmlRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /html'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${HtmlIntegration}'
+
+  HtmlIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HtmlProxyFunction.Arn}/invocations'
+      PayloadFormatVersion: '2.0'
+
+  HtmlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HtmlProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # AgentCore Runtime Route (for MCP protocol communication)
+  AgentCoreRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /agentcore'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${AgentCoreIntegration}'
+
+  AgentCoreIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt AgentCoreRuntimeFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  AgentCorePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AgentCoreRuntimeFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # Bedrock Agent Chat Route (for multi-turn conversations)
+  BedrockAgentChatRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'POST /bedrock-agent-chat'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Sub 'integrations/${BedrockAgentChatIntegration}'
+
+  BedrockAgentChatIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BedrockAgentChatFunction.Arn}/invocations'
+      PayloadFormatVersion: '2.0'
+
+  BedrockAgentChatPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BedrockAgentChatFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*'
+
+  # ==========================================
+  # S3 Bucket for Assets (no longer used for static website hosting)
+  # ==========================================
+
+  UIBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+
+
+
+Outputs:
+  ApiBaseUrl:
+    Description: API Gateway base URL
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+    Export:
+      Name: !Sub '${StackPrefix}-ApiBaseUrl'
+
+  S3BucketName:
+    Description: S3 bucket name for assets
+    Value: !Ref UIBucket
+    Export:
+      Name: !Sub '${StackPrefix}-UIBucket'
+
+  PassageToolLambdaArn:
+    Description: Passage Tool Lambda ARN (for Bedrock Agent)
+    Value: !GetAtt PassageToolFunction.Arn
+    Export:
+      Name: !Sub '${StackPrefix}-PassageToolArn'
+
+  AgentCoreRuntimeLambdaArn:
+    Description: AgentCore Runtime Lambda ARN
+    Value: !GetAtt AgentCoreRuntimeFunction.Arn
+    Export:
+      Name: !Sub '${StackPrefix}-AgentCoreRuntimeArn'
+  
+  AgentCoreRuntimeRoleArn:
+    Description: AgentCore Runtime IAM Role ARN
+    Value: !GetAtt AgentCoreRuntimeRole.Arn
+    Export:
+      Name: !Sub '${StackPrefix}-AgentCoreRuntimeRoleArn'
+  
+  CoveoApiKeySecretArn:
+    Description: Coveo API Key Secret ARN (for MCP server)
+    Value: !Ref CoveoApiKeySecret
+    Export:
+      Name: !Sub '${StackPrefix}-CoveoApiKeySecretArn'

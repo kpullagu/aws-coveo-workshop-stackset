@@ -1,0 +1,342 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Coveo Agent Runtime on AgentCore - Orchestrates MCP tool calls with Bedrock model"
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Default: workshop
+    Description: Prefix for SSM parameter paths and resource naming
+
+  BedrockModelId:
+    Type: String
+    Default: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+    Description: Bedrock model ID for the agent
+
+  MCPRuntimeArn:
+    Type: String
+    Description: ARN of the MCP server runtime (from MCP deployment)
+
+  AWSRegion:
+    Type: String
+    Default: us-east-1
+    Description: AWS region for AgentCore and Bedrock
+
+  AgentName:
+    Type: String
+    Default: "CoveoAgent"
+    Description: "Name for the Agent runtime"
+
+  ImageTag:
+    Type: String
+    Default: "latest"
+    Description: "Tag for the Docker image"
+
+  ECRRepositoryName:
+    Type: String
+    Default: "coveo-agent"
+    Description: "Name of the ECR repository"
+
+  NetworkMode:
+    Type: String
+    Default: "PUBLIC"
+    Description: "Network mode for AgentCore resources"
+    AllowedValues:
+      - PUBLIC
+      - PRIVATE
+
+Resources:
+  # Note: ECR Repository is created by deploy script, not by CloudFormation
+  # This allows the image to be built and pushed before the stack is created
+
+  # CloudWatch Log Group for Model Invocations
+  ModelInvocationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/bedrock/modelinvocations/${AWS::StackName}'
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-model-invocations'
+        - Key: Purpose
+          Value: 'Bedrock Model Invocation Logging'
+
+  # CloudWatch Log Group for Agent Runtime
+  AgentRuntimeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/bedrock/agentcore/${AWS::StackName}'
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-agent-runtime'
+        - Key: Purpose
+          Value: 'AgentCore Runtime Logging'
+
+  # Agent Execution Role
+  AgentExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-agent-execution-role"
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess
+      Policies:
+        - PolicyName: AgentCoreExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ECRImageAccess
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${AWS::StackName}"
+              - Sid: ECRTokenAccess
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !GetAtt ModelInvocationLogGroup.Arn
+                  - !GetAtt AgentRuntimeLogGroup.Arn
+                  - !Sub "${ModelInvocationLogGroup.Arn}:*"
+                  - !Sub "${AgentRuntimeLogGroup.Arn}:*"
+              - Sid: BedrockInvoke
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"
+              - Sid: BedrockModelInvocationLogging
+                Effect: Allow
+                Action:
+                  - bedrock:PutModelInvocationLoggingConfiguration
+                  - bedrock:GetModelInvocationLoggingConfiguration
+                Resource: "*"
+              - Sid: AgentCoreRuntimeInvoke
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                Resource: !Ref MCPRuntimeArn
+              - Sid: WorkloadAccessToken
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:GetWorkloadAccessToken
+                Resource: "*"
+              - Sid: SSMParameterAccess
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/*"
+              - Sid: MemoryAccess
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:CreateMemoryRecord
+                  - bedrock-agentcore:GetMemoryRecord
+                  - bedrock-agentcore:ListMemoryRecords
+                  - bedrock-agentcore:DeleteMemoryRecord
+                  - bedrock-agentcore:RetrieveMemories
+                Resource: "*"
+              - Sid: XRayTracing
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+              - Sid: CloudWatchMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: 
+                      - AWS/BedrockAgentCore
+                      - CoveoAgent
+
+  # AgentCore Memory for conversation history
+  AgentMemory:
+    Type: AWS::BedrockAgentCore::Memory
+    Properties:
+      Name: !Sub "${StackPrefix}_CoveoAgent_Memory"
+      Description: "Memory for Coveo Agent conversations - stores session history and summaries"
+      EventExpiryDuration: 7  # Keep events for 7 days (minimum allowed)
+      MemoryExecutionRoleArn: !GetAtt AgentExecutionRole.Arn
+      MemoryStrategies:
+        - SummaryMemoryStrategy:
+            Name: "SessionSummarizer"
+            Description: "Summarizes conversation sessions for context retention"
+            Namespaces:
+              - "/summaries/{actorId}/{sessionId}"
+
+  # Agent Runtime
+  AgentRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    DependsOn: AgentMemory
+    Properties:
+      AgentRuntimeName: !Sub "${StackPrefix}_CoveoAgent"
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AWS::StackName}:${ImageTag}"
+      RoleArn: !GetAtt AgentExecutionRole.Arn
+      NetworkConfiguration:
+        NetworkMode: !Ref NetworkMode
+      Description: "Coveo Agent that orchestrates MCP tool calls with Bedrock"
+      EnvironmentVariables:
+        MEMORY_ID: !GetAtt AgentMemory.MemoryId
+        AWS_STACK_NAME: !Ref AWS::StackName
+        EXECUTION_ROLE_ARN: !GetAtt AgentExecutionRole.Arn
+        MODEL_INVOCATION_LOG_GROUP: !Ref ModelInvocationLogGroup
+        AGENT_RUNTIME_LOG_GROUP: !Ref AgentRuntimeLogGroup
+        # Enable detailed logging
+        LOG_LEVEL: INFO
+        PYTHONUNBUFFERED: "1"
+        # Enable Observability Features
+        AWS_XRAY_TRACING_ENABLED: "true"
+        AWS_XRAY_DAEMON_ADDRESS: "xray-daemon:2000"
+        OTEL_TRACES_EXPORTER: "xray"
+        OTEL_METRICS_EXPORTER: "cloudwatch"
+        OTEL_LOGS_EXPORTER: "cloudwatch"
+        OTEL_SERVICE_NAME: !Sub "${StackPrefix}-coveo-agent"
+        OTEL_RESOURCE_ATTRIBUTES: !Sub "service.name=${StackPrefix}-coveo-agent,service.namespace=workshop,deployment.environment=production"
+      Tags:
+        Name: !Sub '${AWS::StackName}-agent-runtime'
+        Project: CoveoAWSWorkshop
+        Component: Agent
+
+  # CloudWatch Dashboard for Observability
+  ObservabilityDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${StackPrefix}-coveo-agent-observability"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/Bedrock", "Invocations", {"stat": "Sum"}],
+                  [".", "Errors", {"stat": "Sum"}],
+                  [".", "Throttles", {"stat": "Sum"}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "Bedrock Model Invocations",
+                "yAxis": {
+                  "left": {
+                    "min": 0
+                  }
+                }
+              }
+            },
+            {
+              "type": "log",
+              "properties": {
+                "query": "SOURCE '${ModelInvocationLogGroup}'\n| fields @timestamp, @message\n| sort @timestamp desc\n| limit 100",
+                "region": "${AWS::Region}",
+                "title": "Model Invocation Logs",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "properties": {
+                "query": "SOURCE '${AgentRuntimeLogGroup}'\n| fields @timestamp, @message\n| sort @timestamp desc\n| limit 100",
+                "region": "${AWS::Region}",
+                "title": "Agent Runtime Logs",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/Logs", "IncomingLogEvents", {"stat": "Sum"}],
+                  [".", "IncomingBytes", {"stat": "Sum"}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "CloudWatch Logs Metrics",
+                "yAxis": {
+                  "left": {
+                    "min": 0
+                  }
+                }
+              }
+            }
+          ]
+        }
+
+Outputs:
+  AgentMemoryId:
+    Description: "ID of the AgentCore Memory"
+    Value: !GetAtt AgentMemory.MemoryId
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentMemoryId"
+
+  AgentMemoryArn:
+    Description: "ARN of the AgentCore Memory"
+    Value: !GetAtt AgentMemory.MemoryArn
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentMemoryArn"
+
+  AgentRuntimeArn:
+    Description: "ARN of the Agent runtime"
+    Value: !GetAtt AgentRuntime.AgentRuntimeArn
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentRuntimeArn"
+
+  AgentRuntimeId:
+    Description: "ID of the Agent runtime"
+    Value: !GetAtt AgentRuntime.AgentRuntimeId
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentRuntimeId"
+
+  ECRRepositoryUri:
+    Description: "URI of the ECR repository for Agent image"
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${AWS::StackName}"
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRRepositoryUri"
+
+  AgentExecutionRoleArn:
+    Description: "ARN of the Agent execution role"
+    Value: !GetAtt AgentExecutionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentExecutionRoleArn"
+
+  ModelInvocationLogGroupName:
+    Description: "CloudWatch Log Group for Model Invocations"
+    Value: !Ref ModelInvocationLogGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-ModelInvocationLogGroup"
+
+  AgentRuntimeLogGroupName:
+    Description: "CloudWatch Log Group for Agent Runtime"
+    Value: !Ref AgentRuntimeLogGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentRuntimeLogGroup"

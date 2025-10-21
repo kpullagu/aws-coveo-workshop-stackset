@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'App Runner deployment for Coveo Workshop UI (BFF + React)'
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Default: workshop
+    Description: Prefix for resource names
+
+  Environment:
+    Type: String
+    Default: workshop
+    Description: Environment name
+
+  ECRImageUri:
+    Type: String
+    Description: ECR image URI for the UI container
+    # Example: 123456789012.dkr.ecr.us-east-1.amazonaws.com/workshop-ui:latest
+
+  ApiGatewayUrl:
+    Type: String
+    Description: API Gateway base URL from core stack
+
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID from auth stack
+
+  CognitoClientId:
+    Type: String
+    Description: Cognito App Client ID from auth stack
+
+  CognitoRegion:
+    Type: String
+    Default: us-east-1
+    Description: AWS region for Cognito
+
+  CoveoOrgId:
+    Type: String
+    Description: Coveo Organization ID
+
+  CoveoSearchApiKey:
+    Type: String
+    Description: Coveo Search API Key
+    NoEcho: true
+
+  CoveoAnswerConfigId:
+    Type: String
+    Description: Coveo Answer Configuration ID
+
+Resources:
+  # ==========================================
+  # IAM Role for App Runner Instance
+  # ==========================================
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # Don't use explicit RoleName - let CloudFormation generate unique name
+      # This prevents conflicts with existing roles from failed deployments
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+      Policies:
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:InvokeAsync
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackPrefix}-*'
+        - PolicyName: SecretsManagerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${StackPrefix}/*'
+        - PolicyName: SSMParameterPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
+
+  # ==========================================
+  # IAM Role for App Runner Access (ECR)
+  # ==========================================
+  AppRunnerAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # Don't use explicit RoleName - let CloudFormation generate unique name
+      # This prevents conflicts with existing roles from failed deployments
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  # ==========================================
+  # App Runner Service
+  # ==========================================
+  AppRunnerService:
+    Type: AWS::AppRunner::Service
+    DependsOn:
+      - AppRunnerInstanceRole
+      - AppRunnerAccessRole
+    Properties:
+      ServiceName: !Sub '${StackPrefix}-ui'
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
+        ImageRepository:
+          ImageIdentifier: !Ref ECRImageUri
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: '3003'
+            RuntimeEnvironmentVariables:
+              # Node.js Configuration
+              - Name: NODE_ENV
+                Value: production
+              - Name: PORT
+                Value: '3003'
+              
+              # AWS Configuration
+              - Name: AWS_REGION
+                Value: !Ref AWS::Region
+              
+              # API Gateway Configuration
+              - Name: API_GATEWAY_URL
+                Value: !Ref ApiGatewayUrl
+              
+              # Cognito Configuration
+              - Name: COGNITO_USER_POOL_ID
+                Value: !Ref CognitoUserPoolId
+              - Name: COGNITO_CLIENT_ID
+                Value: !Ref CognitoClientId
+              - Name: COGNITO_REGION
+                Value: !Ref CognitoRegion
+              
+              # Coveo Configuration (from parameters)
+              - Name: COVEO_ORG_ID
+                Value: !Ref CoveoOrgId
+              - Name: COVEO_SEARCH_API_KEY
+                Value: !Ref CoveoSearchApiKey
+              - Name: COVEO_PLATFORM_URL
+                Value: https://platform.cloud.coveo.com
+              - Name: COVEO_SEARCH_PIPELINE
+                Value: aws-workshop-pipeline
+              - Name: COVEO_PIPELINE
+                Value: aws-workshop-pipeline
+              - Name: COVEO_SEARCH_HUB
+                Value: aws-workshop
+              - Name: COVEO_ANSWER_CONFIG_ID
+                Value: !Ref CoveoAnswerConfigId
+              - Name: COVEO_RESULTS_PER_PAGE
+                Value: '20'
+        AutoDeploymentsEnabled: true
+      InstanceConfiguration:
+        Cpu: 1 vCPU
+        Memory: 2 GB
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      HealthCheckConfiguration:
+        Protocol: HTTP
+        Path: /api/health
+        Interval: 10
+        Timeout: 5
+        HealthyThreshold: 1
+        UnhealthyThreshold: 5
+      Tags:
+        - Key: Project
+          Value: CoveoAWSWorkshop
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: UI
+
+Outputs:
+  AppRunnerServiceUrl:
+    Description: App Runner service URL
+    Value: !Sub 'https://${AppRunnerService.ServiceUrl}'
+    Export:
+      Name: !Sub '${StackPrefix}-AppRunnerUrl'
+
+  AppRunnerServiceArn:
+    Description: App Runner service ARN
+    Value: !GetAtt AppRunnerService.ServiceArn
+    Export:
+      Name: !Sub '${StackPrefix}-AppRunnerArn'
+
+  AppRunnerServiceId:
+    Description: App Runner service ID
+    Value: !GetAtt AppRunnerService.ServiceId
+    Export:
+      Name: !Sub '${StackPrefix}-AppRunnerServiceId'

@@ -1,0 +1,359 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AgentCore Runtime for Coveo MCP Server'
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Default: workshop
+    Description: Prefix for all resources
+  
+  Environment:
+    Type: String
+    Default: workshop
+    Description: Environment name
+    AllowedValues:
+      - dev
+      - workshop
+      - prod
+  
+  CoveoOrgId:
+    Type: String
+    Description: Coveo Organization ID
+  
+  CoveoAnswerConfigId:
+    Type: String
+    Description: Coveo Answer API configuration ID
+  
+  CoveoApiKeySecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret containing Coveo API key
+
+Resources:
+  # ==========================================
+  # Note: IAM Role for AgentCore Runtime is created in the core stack
+  # to avoid conflicts and ensure proper dependency management
+  # ==========================================
+
+  # ==========================================
+  # CloudWatch Log Group for AgentCore Runtime
+  # ==========================================
+  AgentCoreLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/bedrock/agentcore/${StackPrefix}-coveo-runtime'
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-agentcore-runtime-logs'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================
+  # Lambda Function to Check/Create ECR Repository
+  # ==========================================
+  EcrRepositoryManagerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-ecr-manager-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: EcrRepositoryManagement
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:CreateRepository
+                  - ecr:DescribeRepositories
+                  - ecr:DeleteRepository
+                  - ecr:PutLifecyclePolicy
+                  - ecr:PutImageScanningConfiguration
+                  - ecr:TagResource
+                Resource: '*'
+
+  EcrRepositoryManagerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-ecr-repository-manager'
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt EcrRepositoryManagerRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          ecr_client = boto3.client('ecr')
+          
+          def lambda_handler(event, context):
+              try:
+                  logger.info(f"Event: {json.dumps(event)}")
+                  
+                  request_type = event['RequestType']
+                  properties = event['ResourceProperties']
+                  
+                  repository_name = properties['RepositoryName']
+                  
+                  if request_type == 'Create' or request_type == 'Update':
+                      # Check if repository exists
+                      try:
+                          response = ecr_client.describe_repositories(
+                              repositoryNames=[repository_name]
+                          )
+                          repository_uri = response['repositories'][0]['repositoryUri']
+                          logger.info(f"Repository {repository_name} already exists: {repository_uri}")
+                          
+                          # Update lifecycle policy and scanning if needed
+                          try:
+                              ecr_client.put_lifecycle_policy(
+                                  repositoryName=repository_name,
+                                  lifecyclePolicyText=json.dumps({
+                                      "rules": [{
+                                          "rulePriority": 1,
+                                          "description": "Keep last 10 images",
+                                          "selection": {
+                                              "tagStatus": "any",
+                                              "countType": "imageCountMoreThan",
+                                              "countNumber": 10
+                                          },
+                                          "action": {"type": "expire"}
+                                      }]
+                                  })
+                              )
+                              logger.info("Updated lifecycle policy")
+                          except Exception as e:
+                              logger.warning(f"Could not update lifecycle policy: {e}")
+                          
+                          cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                              'RepositoryUri': repository_uri,
+                              'RepositoryName': repository_name,
+                              'AlreadyExisted': 'true'
+                          }, repository_name)
+                          
+                      except ecr_client.exceptions.RepositoryNotFoundException:
+                          # Create new repository
+                          logger.info(f"Creating repository {repository_name}")
+                          response = ecr_client.create_repository(
+                              repositoryName=repository_name,
+                              imageScanningConfiguration={'scanOnPush': True},
+                              encryptionConfiguration={'encryptionType': 'AES256'},
+                              imageTagMutability='MUTABLE'
+                          )
+                          repository_uri = response['repository']['repositoryUri']
+                          
+                          # Set lifecycle policy
+                          ecr_client.put_lifecycle_policy(
+                              repositoryName=repository_name,
+                              lifecyclePolicyText=json.dumps({
+                                  "rules": [{
+                                      "rulePriority": 1,
+                                      "description": "Keep last 10 images",
+                                      "selection": {
+                                          "tagStatus": "any",
+                                          "countType": "imageCountMoreThan",
+                                          "countNumber": 10
+                                      },
+                                      "action": {"type": "expire"}
+                                  }]
+                              })
+                          )
+                          
+                          logger.info(f"Created repository: {repository_uri}")
+                          
+                          cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                              'RepositoryUri': repository_uri,
+                              'RepositoryName': repository_name,
+                              'AlreadyExisted': 'false'
+                          }, repository_name)
+                          
+                  elif request_type == 'Delete':
+                      # Don't delete the repository on stack deletion to preserve images
+                      logger.info(f"Skipping deletion of repository {repository_name} to preserve images")
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, event.get('PhysicalResourceId', repository_name))
+                      
+              except Exception as e:
+                  logger.error(f"Error: {e}", exc_info=True)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, event.get('PhysicalResourceId', 'failed'))
+
+  # ==========================================
+  # ECR Repository (Check/Create via Custom Resource)
+  # ==========================================
+  McpServerRepository:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt EcrRepositoryManagerFunction.Arn
+      RepositoryName: !Sub '${StackPrefix}-coveo-mcp-server'
+
+  # ==========================================
+  # Note: Using native AWS::BedrockAgentCore::Runtime resource
+  # No custom Lambda function needed for runtime management
+  # ==========================================
+  # AgentCore Runtime - Native CloudFormation Resource
+  # ==========================================
+  AgentCoreRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    DependsOn:
+      - McpServerRepository
+    Properties:
+      AgentRuntimeName: !Sub
+        - "${StackPrefixUnderscore}_coveo_mcp_runtime"
+        - StackPrefixUnderscore: !Join ["_", !Split ["-", !Ref StackPrefix]]
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${StackPrefix}-coveo-mcp-server:latest'
+      EnvironmentVariables:
+        MCP_TRANSPORT: streamable-http
+        MCP_HOST: 0.0.0.0
+        MCP_PORT: '8000'
+        COVEO_ORGANIZATION_ID: !Ref CoveoOrgId
+        COVEO_ANSWER_CONFIG_ID: !Ref CoveoAnswerConfigId
+        COVEO_PLATFORM_URL: https://platform.cloud.coveo.com
+        COVEO_API_KEY_SECRET_ARN: !Ref CoveoApiKeySecretArn
+        PYTHONUNBUFFERED: '1'
+        LOG_LEVEL: DEBUG
+        MCP_NAME: coveo_mcp_server
+        MCP_HTTP_PATH: /mcp
+      RoleArn: 
+        Fn::ImportValue: !Sub '${StackPrefix}-AgentCoreRuntimeRoleArn'
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      ProtocolConfiguration: MCP
+      Description: !Sub 'Coveo MCP Server Runtime for ${StackPrefix}'
+      Tags:
+        Name: !Sub '${StackPrefix}-coveo-mcp-runtime'
+        Environment: !Ref Environment
+
+  # ==========================================
+  # AgentCore Runtime Endpoint
+  # ==========================================
+  AgentCoreRuntimeEndpoint:
+    Type: AWS::BedrockAgentCore::RuntimeEndpoint
+    DependsOn:
+      - AgentCoreRuntime
+    Properties:
+      AgentRuntimeId: !GetAtt AgentCoreRuntime.AgentRuntimeId
+      Name: !Sub '${StackPrefix}_coveo_mcp_endpoint'
+      Description: !Sub 'Public endpoint for ${StackPrefix} Coveo MCP Runtime'
+      Tags:
+        Name: !Sub '${StackPrefix}-coveo-mcp-endpoint'
+        Environment: !Ref Environment
+
+  # ==========================================
+  # SSM Parameters for Runtime Configuration
+  # ==========================================
+  RuntimeArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/runtime-arn'
+      Description: AgentCore Runtime ARN for Coveo MCP Server
+      Type: String
+      Value: !GetAtt AgentCoreRuntime.AgentRuntimeArn
+      Tags:
+        Name: !Sub '${StackPrefix}-runtime-arn-param'
+        Environment: !Ref Environment
+
+  RuntimeIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/runtime-id'
+      Description: AgentCore Runtime ID for Coveo MCP Server
+      Type: String
+      Value: !GetAtt AgentCoreRuntime.AgentRuntimeId
+      Tags:
+        Name: !Sub '${StackPrefix}-runtime-id-param'
+        Environment: !Ref Environment
+
+Outputs:
+  AgentCoreRuntimeRoleArn:
+    Description: ARN of the AgentCore Runtime IAM Role (from core stack)
+    Value: 
+      Fn::ImportValue: !Sub '${StackPrefix}-AgentCoreRuntimeRoleArn'
+    Export:
+      Name: !Sub '${StackPrefix}-agentcore-runtime-role-arn'
+  
+  LogGroupName:
+    Description: CloudWatch Log Group for AgentCore Runtime
+    Value: !Ref AgentCoreLogGroup
+    Export:
+      Name: !Sub '${StackPrefix}-agentcore-log-group'
+  
+  McpServerRepositoryUri:
+    Description: ECR repository URI for MCP server Docker images
+    Value: !GetAtt McpServerRepository.RepositoryUri
+    Export:
+      Name: !Sub '${StackPrefix}-mcp-repository-uri'
+  
+  McpServerRepositoryName:
+    Description: ECR repository name for MCP server Docker images
+    Value: !GetAtt McpServerRepository.RepositoryName
+    Export:
+      Name: !Sub '${StackPrefix}-mcp-repository-name'
+  
+  McpServerRepositoryAlreadyExisted:
+    Description: Whether the ECR repository already existed (true) or was created (false)
+    Value: !GetAtt McpServerRepository.AlreadyExisted
+  
+  MCPServerRuntimeId:
+    Description: ID of the Coveo MCP server runtime
+    Value: !GetAtt AgentCoreRuntime.AgentRuntimeId
+    Export:
+      Name: !Sub '${StackPrefix}-MCPServerRuntimeId'
+  
+  MCPServerRuntimeArn:
+    Description: ARN of the Coveo MCP server runtime
+    Value: !GetAtt AgentCoreRuntime.AgentRuntimeArn
+    Export:
+      Name: !Sub '${StackPrefix}-MCPServerRuntimeArn'
+  
+  MCPServerInvocationURL:
+    Description: URL to invoke the Coveo MCP server
+    Value: !Sub
+      - "https://bedrock-agentcore.${AWS::Region}.amazonaws.com/runtimes/${EncodedArn}/invocations?qualifier=DEFAULT"
+      - EncodedArn: !Join
+          - ""
+          - - !Select [0, !Split [":", !GetAtt AgentCoreRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [1, !Split [":", !GetAtt AgentCoreRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [2, !Split [":", !GetAtt AgentCoreRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [3, !Split [":", !GetAtt AgentCoreRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [4, !Split [":", !GetAtt AgentCoreRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [5, !Split [":", !GetAtt AgentCoreRuntime.AgentRuntimeArn]]
+            - "%2F"
+            - !Select [1, !Split ["/", !GetAtt AgentCoreRuntime.AgentRuntimeArn]]
+    Export:
+      Name: !Sub '${StackPrefix}-MCPServerInvocationURL'
+  
+  # Note: RuntimeEndpoint resource doesn't expose standard attributes
+  # Endpoint is created but ID/ARN are not available via CloudFormation
+  # The endpoint is accessible via the runtime ARN with qualifier=DEFAULT
+  
+  # MCPServerEndpointId:
+  #   Description: ID of the Coveo MCP server runtime endpoint
+  #   Value: !Ref AgentCoreRuntimeEndpoint
+  #   Export:
+  #     Name: !Sub '${StackPrefix}-MCPServerEndpointId'
+  
+  # MCPServerEndpointArn:
+  #   Description: ARN of the Coveo MCP server runtime endpoint
+  #   Value: !GetAtt AgentCoreRuntimeEndpoint.Arn
+  #   Export:
+  #     Name: !Sub '${StackPrefix}-MCPServerEndpointArn'

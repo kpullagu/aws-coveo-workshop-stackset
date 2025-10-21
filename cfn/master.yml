@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Master stack for Coveo + AWS Workshop - Orchestrates nested stacks for auth, core services, Bedrock Agent, and AgentCore'
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Default: workshop
+    Description: Prefix for all nested stack names
+    AllowedPattern: '^[a-z][a-z0-9\-]{2,20}$'
+    ConstraintDescription: Must be lowercase alphanumeric with hyphens, 3-20 characters
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - workshop
+      - prod
+    Description: Deployment environment
+
+  S3BucketName:
+    Type: String
+    Description: S3 bucket name for UI hosting (must be globally unique)
+    AllowedPattern: '^[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]$'
+
+  CfnTemplateBucket:
+    Type: String
+    Description: S3 bucket name for CloudFormation templates
+    AllowedPattern: '^[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]$'
+
+  CognitoDomainPrefix:
+    Type: String
+    Description: Cognito Hosted UI domain prefix (must be globally unique)
+    AllowedPattern: '^[a-z0-9\-]{3,63}$'
+
+  BedrockModelId:
+    Type: String
+    Default: 'anthropic.claude-3-sonnet-20240229-v1:0'
+    Description: Bedrock foundation model ID for Agent
+
+  CoveoOrgId:
+    Type: String
+    Description: Coveo organization ID (will be stored in SSM)
+    NoEcho: false
+
+  CoveoAnswerConfigId:
+    Type: String
+    Description: Coveo Answer API configuration ID
+    NoEcho: false
+
+  DeployBedrockAgent:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Whether to deploy Bedrock Agent stack (Lab 2)
+
+
+
+Conditions:
+  ShouldDeployBedrockAgent: !Equals [!Ref DeployBedrockAgent, 'true']
+
+Resources:
+  # Cognito Authentication Stack
+  AuthStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${CfnTemplateBucket}.s3.${AWS::Region}.amazonaws.com/cfn/auth-cognito.yml'
+      Parameters:
+        StackPrefix: !Ref StackPrefix
+        CognitoDomainPrefix: !Ref CognitoDomainPrefix
+        # Use placeholder - will update Cognito after CoreStack deployment
+        CallbackURLs: 'http://localhost:3000'
+        LogoutURLs: 'http://localhost:3000'
+      Tags:
+        - Key: Project
+          Value: CoveoAWSWorkshop
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Core Infrastructure Stack (API Gateway, Lambdas, S3)
+  CoreStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: AuthStack
+    Properties:
+      TemplateURL: !Sub 'https://${CfnTemplateBucket}.s3.${AWS::Region}.amazonaws.com/cfn/shared-core.yml'
+      Parameters:
+        StackPrefix: !Ref StackPrefix
+        S3BucketName: !Ref S3BucketName
+        CfnTemplateBucket: !Ref CfnTemplateBucket
+        CognitoUserPoolArn: !GetAtt AuthStack.Outputs.UserPoolArn
+        CognitoUserPoolId: !GetAtt AuthStack.Outputs.UserPoolId
+        CognitoClientId: !GetAtt AuthStack.Outputs.UserPoolClientId
+        CoveoOrgId: !Ref CoveoOrgId
+        CoveoAnswerConfigId: !Ref CoveoAnswerConfigId
+      Tags:
+        - Key: Project
+          Value: CoveoAWSWorkshop
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Bedrock Agent Stack (Lab 2 - Optional)
+  BedrockAgentStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldDeployBedrockAgent
+    DependsOn: CoreStack
+    Properties:
+      TemplateURL: !Sub 'https://${CfnTemplateBucket}.s3.${AWS::Region}.amazonaws.com/cfn/bedrock-agent.yml'
+      Parameters:
+        StackPrefix: !Ref StackPrefix
+        Environment: !Ref Environment
+        BedrockFoundationModel: !Ref BedrockModelId
+        PassageToolFunctionArn: !GetAtt CoreStack.Outputs.PassageToolLambdaArn
+      Tags:
+        - Key: Project
+          Value: CoveoAWSWorkshop
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Lab
+          Value: Lab2
+
+  # Note: AgentCore Runtimes (MCP + Agent) are deployed separately via:
+  # 1. scripts/deploy-mcp.sh - Creates MCP Runtime (Tool Provider)
+  # 2. scripts/deploy-agent.sh - Creates Agent Runtime (Orchestrator)
+  # This provides better control and follows the three-tier architecture
+
+  # Note: UI App Runner Stack is deployed separately after SSM seeding
+  # This is because the UI stack needs Coveo configuration from SSM parameters
+
+Outputs:
+  # Auth Outputs (no exports - nested stack already exports these)
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !GetAtt AuthStack.Outputs.UserPoolId
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !GetAtt AuthStack.Outputs.UserPoolClientId
+
+  CognitoHostedUIUrl:
+    Description: Cognito Hosted UI URL
+    Value: !GetAtt AuthStack.Outputs.HostedUIUrl
+
+  # Note: UI outputs will be available after separate UI stack deployment
+
+  # Core Outputs (no exports - nested stack already exports these)
+  ApiBaseUrl:
+    Description: API Gateway base URL
+    Value: !GetAtt CoreStack.Outputs.ApiBaseUrl
+
+  S3BucketName:
+    Description: S3 bucket name (legacy)
+    Value: !Ref S3BucketName
+
+  # Bedrock Agent Outputs (conditional, no exports - nested stack already exports these)
+  BedrockAgentId:
+    Condition: ShouldDeployBedrockAgent
+    Description: Bedrock Agent ID (Lab 2)
+    Value: !GetAtt BedrockAgentStack.Outputs.AgentId
+
+  BedrockAgentAliasId:
+    Condition: ShouldDeployBedrockAgent
+    Description: Bedrock Agent Alias ID (Lab 2)
+    Value: !GetAtt BedrockAgentStack.Outputs.AgentAliasId
+
+  # Note: AgentCore Runtime outputs are available from separate stacks:
+  # - workshop-mcp-server (MCP Runtime)
+  # - workshop-coveo-agent (Agent Runtime)
+
+  # Deployment Summary
+  DeploymentSummary:
+    Description: Quick reference for workshop attendees
+    Value: !Sub |
+      ========================================
+      Coveo + AWS Workshop Deployment Complete
+      ========================================
+      
+      🔗 API: ${CoreStack.Outputs.ApiBaseUrl}
+      🔐 Login: ${AuthStack.Outputs.HostedUIUrl}
+      
+      Cognito:
+        - User Pool ID: ${AuthStack.Outputs.UserPoolId}
+        - Client ID: ${AuthStack.Outputs.UserPoolClientId}
+      
+      Next Steps:
+      1. UI will be deployed separately to App Runner
+      2. Create a test user in Cognito
+      3. Open the App Runner URL and log in
+      4. Complete Lab 1-4 exercises
+      
+      ========================================

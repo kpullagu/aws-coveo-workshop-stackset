@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cognito authentication stack for Coveo + AWS Workshop'
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Description: Prefix for resource names
+
+  CognitoDomainPrefix:
+    Type: String
+    Description: Cognito Hosted UI domain prefix (must be globally unique)
+
+  CallbackURLs:
+    Type: String
+    Description: Comma-separated list of callback URLs
+    Default: 'http://localhost:3000'
+
+  LogoutURLs:
+    Type: String
+    Description: Comma-separated list of logout URLs
+    Default: 'http://localhost:3000'
+
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${StackPrefix}-user-pool'
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate:
+          - email
+
+  # User Pool Client (with PKCE for SPA)
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${StackPrefix}-web-client'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false  # Public client for SPA
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs: !Split [',', !Ref CallbackURLs]
+      LogoutURLs: !Split [',', !Ref LogoutURLs]
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 1  # hours
+      IdTokenValidity: 1  # hours
+      RefreshTokenValidity: 30  # days
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # Cognito Hosted UI Domain
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref UserPool
+
+  # Store User Pool ID in SSM Parameter Store
+  UserPoolIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/user-pool-id'
+      Type: String
+      Value: !Ref UserPool
+      Description: Cognito User Pool ID for workshop
+
+  # Store Client ID in SSM Parameter Store
+  ClientIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/client-id'
+      Type: String
+      Value: !Ref UserPoolClient
+      Description: Cognito User Pool Client ID for workshop
+
+  # Store Domain in SSM Parameter Store
+  DomainParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/cognito-domain'
+      Type: String
+      Value: !Ref CognitoDomainPrefix
+      Description: Cognito Hosted UI domain prefix
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${StackPrefix}-UserPoolId'
+
+  UserPoolArn:
+    Description: Cognito User Pool ARN
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub '${StackPrefix}-UserPoolArn'
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub '${StackPrefix}-UserPoolClientId'
+
+  HostedUIUrl:
+    Description: Cognito Hosted UI URL
+    Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${UserPoolClient}&response_type=code&scope=openid+email+profile&redirect_uri=${CallbackURLs}'
+    Export:
+      Name: !Sub '${StackPrefix}-HostedUIUrl'
+
+  UserPoolDomain:
+    Description: Cognito Domain Prefix
+    Value: !Ref CognitoDomainPrefix
+    Export:
+      Name: !Sub '${StackPrefix}-CognitoDomain'

@@ -1,0 +1,11 @@
+bedrock-agentcore-starter-toolkit>=0.1.21
+bedrock-agentcore>=0.1.0
+strands-agents
+mcp>=1.2.1<2
+starlette
+fastapi>=0.111
+uvicorn>=0.30
+httpx>=0.27
+anyio>=4.4
+boto3>=1.34
+botocore>=1.34

@@ -1,0 +1,248 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CodeBuild project for MCP Server with Lambda trigger'
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Default: workshop
+    Description: Prefix for all resources
+  
+  GitHubRepo:
+    Type: String
+    Default: ''
+    Description: GitHub repository URL (optional, leave empty to use S3)
+  
+  SourceBucket:
+    Type: String
+    Description: S3 bucket containing source code
+
+Resources:
+  # ==========================================
+  # CodeBuild IAM Role
+  # ==========================================
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-mcp-codebuild-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub 'arn:aws:s3:::${SourceBucket}/*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                Resource: '*'
+
+  # ==========================================
+  # CodeBuild Project
+  # ==========================================
+  McpServerBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub '${StackPrefix}-mcp-server-build'
+      Description: Build MCP Server Docker image for ARM64
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: ARM_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-aarch64-standard:3.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+          - Name: IMAGE_REPO_NAME
+            Value: !Sub '${StackPrefix}-coveo-mcp-server'
+          - Name: IMAGE_TAG
+            Value: latest
+      Source:
+        Type: S3
+        Location: !Sub '${SourceBucket}/mcp-server-source.zip'
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo "Logging in to Amazon ECR..."
+                - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+                - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+                - TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                - echo "Repository URI = $REPOSITORY_URI"
+                - echo "Timestamp = $TIMESTAMP"
+            build:
+              commands:
+                - echo "Building Docker image for ARM64..."
+                - echo "Build started on $(date)"
+                - echo "Running on native ARM64 - no buildx needed"
+                - docker build --tag $REPOSITORY_URI:latest --tag $REPOSITORY_URI:$TIMESTAMP .
+                - echo "Build completed on $(date)"
+            post_build:
+              commands:
+                - echo "Pushing images to ECR..."
+                - docker push $REPOSITORY_URI:latest
+                - docker push $REPOSITORY_URI:$TIMESTAMP
+                - echo "Push completed on $(date)"
+                - echo "Verifying image..."
+                - aws ecr describe-images --repository-name $IMAGE_REPO_NAME --image-ids imageTag=latest --region $AWS_DEFAULT_REGION
+                - echo "Image URI = $REPOSITORY_URI:latest"
+                - echo "Image pushed successfully with tags - latest and $TIMESTAMP"
+      TimeoutInMinutes: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-mcp-server-build'
+
+  # ==========================================
+  # Lambda Function to Trigger Build
+  # ==========================================
+  BuildTriggerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-build-trigger-role'
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: TriggerCodeBuild
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: !GetAtt McpServerBuildProject.Arn
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${SourceBucket}/*'
+
+  BuildTriggerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-trigger-mcp-build'
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt BuildTriggerLambdaRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          CODEBUILD_PROJECT: !Ref McpServerBuildProject
+          SOURCE_BUCKET: !Ref SourceBucket
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          
+          codebuild = boto3.client('codebuild')
+          
+          def lambda_handler(event, context):
+              """Trigger CodeBuild to build MCP server"""
+              
+              project_name = os.environ['CODEBUILD_PROJECT']
+              
+              print(f"Starting build for project: {project_name}")
+              
+              try:
+                  response = codebuild.start_build(
+                      projectName=project_name
+                  )
+                  
+                  build_id = response['build']['id']
+                  build_status = response['build']['buildStatus']
+                  
+                  print(f"Build started: {build_id}")
+                  print(f"Status: {build_status}")
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Build started successfully',
+                          'buildId': build_id,
+                          'buildStatus': build_status
+                      })
+                  }
+                  
+              except Exception as e:
+                  print(f"Error starting build: {str(e)}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({
+                          'message': 'Failed to start build',
+                          'error': str(e)
+                      })
+                  }
+
+  # ==========================================
+  # SSM Parameter for Build Trigger
+  # ==========================================
+  BuildTriggerArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/mcp/build-trigger-arn'
+      Description: Lambda function ARN to trigger MCP server build
+      Type: String
+      Value: !GetAtt BuildTriggerLambda.Arn
+
+Outputs:
+  CodeBuildProjectName:
+    Description: CodeBuild project name
+    Value: !Ref McpServerBuildProject
+    Export:
+      Name: !Sub '${StackPrefix}-mcp-codebuild-project'
+  
+  CodeBuildProjectArn:
+    Description: CodeBuild project ARN
+    Value: !GetAtt McpServerBuildProject.Arn
+    Export:
+      Name: !Sub '${StackPrefix}-mcp-codebuild-arn'
+  
+  BuildTriggerLambdaArn:
+    Description: Lambda function ARN to trigger builds
+    Value: !GetAtt BuildTriggerLambda.Arn
+    Export:
+      Name: !Sub '${StackPrefix}-build-trigger-arn'
+  
+  BuildTriggerCommand:
+    Description: AWS CLI command to trigger build
+    Value: !Sub 'aws lambda invoke --function-name ${BuildTriggerLambda} --region ${AWS::Region} response.json'

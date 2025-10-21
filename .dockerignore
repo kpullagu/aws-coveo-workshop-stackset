@@ -1,0 +1,64 @@
+# Node modules
+node_modules
+frontend/node_modules
+frontend/client/node_modules
+ui/node_modules
+ui/client/node_modules
+client/node_modules
+npm-debug.log
+yarn-error.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+!package*.json
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Development files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Backup files
+backup/
+
+# Old UI directories (consolidated to /frontend)
+ui/
+client/
+
+# Build artifacts (will be created during build)
+frontend/client/build
+ui/build
+client/build
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/

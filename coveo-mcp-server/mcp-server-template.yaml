@@ -1,0 +1,1180 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "MCP Server on AgentCore Runtime - Deploy an MCP server with custom tools (add_numbers, multiply_numbers, greet_user)"
+
+# ============================================================================
+# PARAMETERS SECTION
+# ============================================================================
+Parameters:
+  # Stack Configuration
+  StackPrefix:
+    Type: String
+    Default: workshop
+    Description: Prefix for SSM parameter paths and resource naming
+    AllowedPattern: ^[a-z0-9-]+$
+    ConstraintDescription: Must contain only lowercase letters, numbers, and hyphens
+
+  # Coveo Configuration
+  CoveoOrgId:
+    Type: String
+    Default: your-coveo-org-id
+    Description: Coveo Organization ID
+  
+  CoveoSearchApiKey:
+    Type: String
+    NoEcho: true
+    Default: xx00000000-0000-0000-0000-000000000000
+    Description: Coveo Search API Key (will be stored as SecureString in SSM)
+  
+  CoveoAnswerConfigId:
+    Type: String
+    Default: 00000000-0000-0000-0000-000000000000
+    Description: Coveo Answer Configuration ID
+  
+  CoveoPlatformUrl:
+    Type: String
+    Default: https://platform.cloud.coveo.com
+    Description: Coveo Platform Base URL
+  
+  CoveoSearchHub:
+    Type: String
+    Default: aws-workshop
+    Description: Coveo Search Hub
+  
+  CoveoPipeline:
+    Type: String
+    Default: aws-workshop-pipeline
+    Description: Coveo Search Pipeline
+
+  # Agent Configuration
+  AgentName:
+    Type: String
+    Default: "coveo_mcp_tool_runtime"
+    Description: "Name for the MCP server runtime"
+    AllowedPattern: "^[a-zA-Z][a-zA-Z0-9_]{0,47}$"
+    ConstraintDescription: "Must start with a letter, max 48 characters, alphanumeric and underscores only"
+
+  # Container Configuration
+  ImageTag:
+    Type: String
+    Default: "latest"
+    Description: "Tag for the Docker image"
+
+  # Cognito Configuration (from main stack)
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID from main workshop stack
+  
+  CognitoUserPoolClientId:
+    Type: String
+    Description: Cognito User Pool Client ID from main workshop stack
+
+  # Network Configuration
+  NetworkMode:
+    Type: String
+    Default: "PUBLIC"
+    Description: "Network mode for AgentCore resources"
+    AllowedValues:
+      - PUBLIC
+      - PRIVATE
+
+  # ECR Configuration
+  ECRRepositoryName:
+    Type: String
+    Default: "mcp-server"
+    Description: "Name of the ECR repository"
+
+# ============================================================================
+# METADATA SECTION
+# ============================================================================
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Stack Configuration"
+        Parameters:
+          - StackPrefix
+      - Label:
+          default: "Coveo Configuration"
+        Parameters:
+          - CoveoOrgId
+          - CoveoSearchApiKey
+          - CoveoAnswerConfigId
+          - CoveoPlatformUrl
+          - CoveoSearchHub
+          - CoveoPipeline
+      - Label:
+          default: "Agent Configuration"
+        Parameters:
+          - AgentName
+          - NetworkMode
+      - Label:
+          default: "Container Configuration"
+        Parameters:
+          - ECRRepositoryName
+          - ImageTag
+    ParameterLabels:
+      StackPrefix:
+        default: "Stack Prefix (for SSM paths)"
+      CoveoOrgId:
+        default: "Coveo Organization ID"
+      CoveoSearchApiKey:
+        default: "Coveo Search API Key"
+      CoveoAnswerConfigId:
+        default: "Coveo Answer Config ID"
+      CoveoPlatformUrl:
+        default: "Coveo Platform URL"
+      CoveoSearchHub:
+        default: "Coveo Search Hub"
+      CoveoPipeline:
+        default: "Coveo Pipeline"
+      AgentName:
+        default: "Agent Name"
+      NetworkMode:
+        default: "Network Mode"
+      ECRRepositoryName:
+        default: "ECR Repository Name"
+      ImageTag:
+        default: "Image Tag"
+
+# ============================================================================
+# CONDITIONS SECTION
+# ============================================================================
+Conditions:
+  CreateMCPRuntime: !Not [!Equals [!Ref ImageTag, "placeholder"]]
+
+# ============================================================================
+# RESOURCES SECTION
+# ============================================================================
+Resources:
+  # ========================================================================
+  # ECR MODULE - Container Registry
+  # ========================================================================
+
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      RepositoryName: !Sub "${AWS::StackName}-${ECRRepositoryName}"
+      ImageTagMutability: MUTABLE
+      EmptyOnDelete: true
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowPullFromAccount
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action:
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-ecr-repository"
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Module
+          Value: ECR
+
+  # ========================================================================
+  # COGNITO MODULE - Using existing Cognito from main workshop stack
+  # ========================================================================
+  # Note: Cognito User Pool and Client are created by the main workshop stack
+  # and passed as parameters (CognitoUserPoolId, CognitoUserPoolClientId)
+
+  # ========================================================================
+  # SSM PARAMETER STORE MODULE - Configuration Storage
+  # ========================================================================
+
+  CoveoSearchApiKeyParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${AWS::StackName}/coveo/search-api-key"
+      Description: !Sub "Coveo Search API Key for ${AWS::StackName}"
+      Type: String
+      Value: !Ref CoveoSearchApiKey
+      Tags:
+        StackName: !Ref AWS::StackName
+        Module: SSM
+
+  CoveoOrgIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${AWS::StackName}/coveo/org-id"
+      Description: !Sub "Coveo Organization ID for ${AWS::StackName}"
+      Type: String
+      Value: !Ref CoveoOrgId
+      Tags:
+        StackName: !Ref AWS::StackName
+        Module: SSM
+
+  CoveoAnswerConfigIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${AWS::StackName}/coveo/answer-config-id"
+      Description: !Sub "Coveo Answer Configuration ID for ${AWS::StackName}"
+      Type: String
+      Value: !Ref CoveoAnswerConfigId
+      Tags:
+        StackName: !Ref AWS::StackName
+        Module: SSM
+
+  # ========================================================================
+  # IAM MODULE - Security and Permissions
+  # ========================================================================
+
+  # Agent Execution Role
+  AgentExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-agent-execution-role"
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeRolePolicy
+            Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess
+      Policies:
+        - PolicyName: AgentCoreExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ECRImageAccess
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                Resource: !GetAtt ECRRepository.Arn
+              - Sid: ECRTokenAccess
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:DescribeLogStreams
+                  - logs:CreateLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Sid: XRayTracing
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+              - Sid: CloudWatchMetrics
+                Effect: Allow
+                Resource: "*"
+                Action: cloudwatch:PutMetricData
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: bedrock-agentcore
+              - Sid: SSMParameterAccess
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/*"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-agent-execution-role"
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Module
+          Value: IAM
+
+  # CodeBuild Service Role
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-codebuild-role"
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
+              - Sid: ECRAccess
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:GetAuthorizationToken
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                Resource:
+                  - !GetAtt ECRRepository.Arn
+                  - "*"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-codebuild-role"
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Module
+          Value: IAM
+
+  # Lambda Custom Resource Role
+  CustomResourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-custom-resource-role"
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CustomResourcePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CodeBuildAccess
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - codebuild:BatchGetProjects
+                Resource: !GetAtt MCPServerImageBuildProject.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-custom-resource-role"
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Module
+          Value: IAM
+
+  # ========================================================================
+  # LAMBDA MODULE - Custom Resources
+  # ========================================================================
+
+  CodeBuildTriggerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-codebuild-trigger"
+      Description: "Triggers CodeBuild projects as CloudFormation custom resource"
+      Handler: index.handler
+      Role: !GetAtt CustomResourceRole.Arn
+      Runtime: python3.9
+      Timeout: 900
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import json
+          import logging
+          import time
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def handler(event, context):
+              logger.info('Received event: %s', json.dumps(event))
+
+              try:
+                  if event['RequestType'] == 'Delete':
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      return
+
+                  project_name = event['ResourceProperties']['ProjectName']
+                  wait_for_completion = event['ResourceProperties'].get('WaitForCompletion', 'true').lower() == 'true'
+
+                  logger.info(f"Attempting to start CodeBuild project: {project_name}")
+                  logger.info(f"Wait for completion: {wait_for_completion}")
+
+                  codebuild = boto3.client('codebuild')
+
+                  try:
+                      project_info = codebuild.batch_get_projects(names=[project_name])
+                      if not project_info['projects']:
+                          raise Exception(f"CodeBuild project '{project_name}' not found")
+                      logger.info(f"CodeBuild project '{project_name}' found")
+                  except Exception as e:
+                      logger.error(f"Error checking project existence: {str(e)}")
+                      raise
+
+                  response = codebuild.start_build(projectName=project_name)
+                  build_id = response['build']['id']
+
+                  logger.info(f"Successfully started build: {build_id}")
+
+                  if not wait_for_completion:
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                          'BuildId': build_id,
+                          'Status': 'STARTED'
+                      })
+                      return
+
+                  max_wait_time = context.get_remaining_time_in_millis() / 1000 - 30
+                  start_time = time.time()
+
+                  while True:
+                      if time.time() - start_time > max_wait_time:
+                          error_message = f"Build {build_id} timed out"
+                          logger.error(error_message)
+                          cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': error_message})
+                          return
+
+                      build_response = codebuild.batch_get_builds(ids=[build_id])
+                      build_status = build_response['builds'][0]['buildStatus']
+
+                      if build_status == 'SUCCEEDED':
+                          logger.info(f"Build {build_id} succeeded")
+                          cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                              'BuildId': build_id,
+                              'Status': build_status
+                          })
+                          return
+                      elif build_status in ['FAILED', 'FAULT', 'STOPPED', 'TIMED_OUT']:
+                          error_message = f"Build {build_id} failed with status: {build_status}"
+                          logger.error(error_message)
+
+                          try:
+                              logs_info = build_response['builds'][0].get('logs', {})
+                              if logs_info.get('groupName') and logs_info.get('streamName'):
+                                  logger.info(f"Build logs available in CloudWatch")
+                          except Exception as log_error:
+                              logger.warning(f"Could not get log information: {log_error}")
+
+                          cfnresponse.send(event, context, cfnresponse.FAILED, {
+                              'Error': error_message,
+                              'BuildId': build_id
+                          })
+                          return
+
+                      logger.info(f"Build {build_id} status: {build_status}")
+                      time.sleep(30)
+
+              except Exception as e:
+                  logger.error('Error: %s', str(e))
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {
+                      'Error': str(e)
+                  })
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-codebuild-trigger"
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Module
+          Value: Lambda
+
+  # ========================================================================
+  # CODEBUILD MODULE - Container Image Building (Manual Trigger)
+  # ========================================================================
+
+  MCPServerImageBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${AWS::StackName}-mcp-server-build"
+      Description: !Sub "Build Coveo MCP server Docker image for ${AWS::StackName}"
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: ARM_CONTAINER
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/amazonlinux2-aarch64-standard:3.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+          - Name: IMAGE_REPO_NAME
+            Value: !Ref ECRRepository
+          - Name: IMAGE_TAG
+            Value: !Ref ImageTag
+          - Name: STACK_NAME
+            Value: !Ref AWS::StackName
+      Source:
+        Type: NO_SOURCE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR...
+                - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+            build:
+              commands:
+                - echo Build started on `date`
+                - echo Building the Coveo MCP server Docker image with async-v3 implementation
+                - echo "Cache-bust timestamp - $(date +%Y%m%d-%H%M%S)"
+
+                # Create requirements.txt with Coveo dependencies
+                - |
+                  cat > requirements.txt << 'EOF'
+                  mcp>=1.10.0
+                  boto3>=1.26.0
+                  httpx>=0.25.0
+                  python-dotenv>=0.19.0
+                  bedrock-agentcore
+                  asyncio
+                  dataclasses
+                  typing-extensions
+                  EOF
+
+                # Create coveo_api.py (EXACT GitHub logic from coveo-labs/coveo-mcp-server)
+                - |
+                  cat > coveo_api.py << 'EOF'
+                  import os
+                  from typing import Any, Dict, Optional, List
+                  import httpx
+                  import json
+                  import boto3
+                  from dotenv import load_dotenv
+                  from dataclasses import dataclass, field
+
+                  load_dotenv()
+
+                  # Coveo API constants - use platform.cloud.coveo.com with org subdomain
+                  COVEO_SEARCH_API_ENDPOINT = "https://{org_id}.org.coveo.com/rest/search/v3?organizationId={org_id}"
+                  COVEO_PASSAGES_API_ENDPOINT = "https://{org_id}.org.coveo.com/rest/search/v3/passages/retrieve?organizationId={org_id}"
+                  COVEO_ANSWER_API_ENDPOINT = "https://{org_id}.org.coveo.com/rest/organizations/{org_id}/answer/v1/configs/{config_id}/generate"
+
+                  # Load Coveo configuration from SSM Parameter Store
+                  # AgentCore Runtime doesn't support environment variables in ContainerConfiguration
+                  # So we read from SSM at runtime instead
+                  import boto3
+                  
+                  ssm = boto3.client('ssm')
+                  STACK_PREFIX = "workshop"  # Default stack prefix
+                  
+                  def get_ssm_parameter(name):
+                      """Get parameter from SSM Parameter Store."""
+                      try:
+                          response = ssm.get_parameter(Name=name, WithDecryption=True)
+                          return response['Parameter']['Value']
+                      except Exception as e:
+                          print(f"ERROR: Failed to get SSM parameter {name}: {e}")
+                          raise
+                  
+                  # Read Coveo credentials from SSM
+                  API_KEY = get_ssm_parameter(f'/{STACK_PREFIX}/coveo/search-api-key')
+                  print(f"DEBUG: API_KEY={'***' + API_KEY[-4:] if API_KEY else 'None'}")
+                  
+                  ORG_ID = get_ssm_parameter(f'/{STACK_PREFIX}/coveo/org-id')
+                  print(f"DEBUG: ORG_ID={ORG_ID}")
+                  
+                  ANSWER_CONFIG_ID = get_ssm_parameter(f'/{STACK_PREFIX}/coveo/answer-config-id')
+                  print(f"DEBUG: ANSWER_CONFIG_ID={ANSWER_CONFIG_ID}")
+                  USER_AGENT = "coveo-mcp-server/1.0"
+
+                  @dataclass
+                  class SearchContext:
+                      """Search context for Coveo queries."""
+                      q: str
+                      bearer_token: str = field(default_factory=lambda: API_KEY)
+                      organization_id: str = field(default_factory=lambda: ORG_ID)
+                      filter: Optional[str] = None
+                      locale: str = "en-US"
+                      timezone: str = "America/New_York"
+                      context: Optional[Dict[str, Any]] = None
+                      additionalFields: Optional[List[str]] = None
+
+                  def format_search_response(response: Dict[str, Any], fields_to_include: List[str]) -> Dict[str, Any]:
+                      """
+                      Format the Coveo search response to include only specified fields.
+                      """
+                      if not response or "results" not in response:
+                          return {"results": []}
+                      
+                      formatted_results = []
+                      for result in response["results"]:
+                          formatted_result = {field: result.get(field) for field in fields_to_include if field in result}
+                          formatted_results.append(formatted_result)
+                      
+                      return {"results": formatted_results}
+
+                  def format_passage_retrieval_response(response: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                      """
+                      Format the Coveo passage retrieval response to extract relevant passages.
+                      """
+                      if not response:
+                          return []
+                      
+                      formatted_passages = []
+                      for item in response:
+                          passage = {
+                              "text": item.get("text", ""),
+                              "document": item.get("document", {})
+                          }
+                          formatted_passages.append(passage)
+                      
+                      return formatted_passages
+
+                  async def make_coveo_request(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+                      """Make a request to the Coveo API with proper error handling."""
+                      headers = {
+                          "Authorization": f"Bearer {API_KEY}",
+                          "Content-Type": "application/json",
+                          "User-Agent": USER_AGENT
+                      }
+                      params = {}
+                      params["organizationId"] = ORG_ID
+                      endpoint = COVEO_SEARCH_API_ENDPOINT.format(org_id=ORG_ID)
+                      
+                      # Debug logging
+                      print(f"DEBUG search_coveo: ORG_ID={ORG_ID}")
+                      print(f"DEBUG search_coveo: endpoint={endpoint}")
+
+                      async with httpx.AsyncClient() as client:
+                          try:
+                              response = await client.post(endpoint, headers=headers, json=payload, params=params, timeout=30.0)
+                              response.raise_for_status()
+                              formatted_response = format_search_response(response.json(), payload.get("fieldsToInclude", []))
+                              return formatted_response
+                          except httpx.HTTPStatusError as e:
+                              error_msg = f"HTTP {e.response.status_code}: {e.response.text}"
+                              logger.error(f"search_coveo HTTP error: {error_msg}")
+                              logger.error(f"Request details: endpoint={endpoint}, payload={json.dumps(payload)}")
+                              import traceback
+                              logger.error(f"Traceback: {traceback.format_exc()}")
+                              return {"error": error_msg}
+                          except Exception as e:
+                              error_msg = f"Request failed: {str(e)}"
+                              logger.error(f"search_coveo exception: {error_msg}")
+                              logger.error(f"Exception type: {type(e).__name__}")
+                              import traceback
+                              logger.error(f"Traceback: {traceback.format_exc()}")
+                              return {"error": error_msg}
+
+                  async def retrieve_passages(query: str, number_of_passages: int = 5) -> Dict:
+                      """
+                      Retrieves passages from Coveo API.
+                      """
+                      search_context = SearchContext(q=query)
+                      endpoint = COVEO_PASSAGES_API_ENDPOINT.format(org_id=ORG_ID)
+                      
+                      is_oauth_token = search_context.bearer_token.startswith('x') and not search_context.bearer_token.startswith('xx')
+                      headers = {
+                          'Authorization': f'Bearer {search_context.bearer_token}',
+                          'Content-Type': 'application/json',
+                          'accept': 'application/json'
+                      }
+                      
+                      # Add organizationId in headers if using API Key
+                      if not is_oauth_token:
+                          headers['organizationId'] = search_context.organization_id
+                      
+                      # Only add organizationId as query parameter for OAuth tokens
+                      params = {}
+                      if is_oauth_token:
+                          params['organizationId'] = search_context.organization_id
+                      
+                      payload = {
+                          "query": search_context.q,
+                          "filter": search_context.filter,
+                          "maxPassages": number_of_passages,
+                          "localization": {
+                              "locale": search_context.locale,
+                              "timezone": search_context.timezone
+                          },
+                          "context": search_context.context or {},
+                          "additionalFields": search_context.additionalFields or [],
+                      }
+                      
+                      async with httpx.AsyncClient() as client:
+                          try:
+                              response = await client.post(endpoint, headers=headers, json=payload, params=params, timeout=30.0)
+                              response.raise_for_status()
+                              data = response.json()
+                              formatted_passages = format_passage_retrieval_response(data.get('items', []))
+                              return formatted_passages
+                          except httpx.HTTPStatusError as e:
+                              error_msg = f"HTTP {e.response.status_code}: {e.response.text}"
+                              logger.error(f"passage_retrieval HTTP error: {error_msg}")
+                              logger.error(f"Request details: endpoint={endpoint}, query={query}")
+                              import traceback
+                              logger.error(f"Traceback: {traceback.format_exc()}")
+                              return []
+                          except Exception as e:
+                              logger.error(f"passage_retrieval exception: {str(e)}")
+                              logger.error(f"Exception type: {type(e).__name__}")
+                              import traceback
+                              logger.error(f"Traceback: {traceback.format_exc()}")
+                              return []
+
+                  async def generate_answer(query: str) -> str:
+                      """
+                      Generates an answer using Coveo Answer API's streaming endpoint.
+                          
+                      Args:
+                          query (str): The question to answer.
+        
+                      Returns:
+                          str: The generated answer or error message.
+                      """
+                      if not query:
+                          return "Error: Query cannot be empty"
+                      
+                      # Format the endpoint URL with organization ID and config ID
+                      endpoint = COVEO_ANSWER_API_ENDPOINT.format(
+                          org_id=ORG_ID,
+                          config_id=ANSWER_CONFIG_ID
+                      )
+                      
+                      headers = {
+                          'Authorization': f'Bearer {API_KEY}',
+                          'Content-Type': 'application/json',
+                          'Accept': 'application/json, text/event-stream',
+                          'Accept-Language': 'en-US',
+                          'User-Agent': USER_AGENT
+                      }
+                      
+                      payload = {
+                          'q': query,
+                          'context': '',
+                          'pipelineRuleParameters': {
+                              'mlGenerativeQuestionAnswering': {
+                                  'responseFormat': {
+                                      'contentFormat': ['text/markdown', 'text/plain']
+                                  }
+                              }
+                          }
+                      }
+                      
+
+                      
+                      try:
+                          complete_answer = []
+                          citations = []
+
+                          async with httpx.AsyncClient() as client:
+                              async with client.stream('POST', endpoint, headers=headers, json=payload, timeout=60.0) as response:
+                                  response.raise_for_status()
+                                  
+                                  async for line in response.aiter_lines():
+                                      if not line.strip() or not line.startswith('data:'):
+                                          continue
+                                      
+                                      # Extract the JSON data part
+                                      json_data = line.replace('data:', '').strip()
+                                      try:
+                                          data = json.loads(json_data)
+                                          payload_type = data.get('payloadType')
+                                          
+                                          # Process different types of responses
+                                          if payload_type == 'genqa.messageType':
+                                              payload = json.loads(data.get('payload', '{}'))
+                                              text_delta = payload.get('textDelta', '')
+                                              if text_delta:
+                                                  complete_answer.append(text_delta)
+                                          
+                                          # Extract citations if available
+                                          elif payload_type == 'genqa.citationsType':
+                                              payload = json.loads(data.get('payload', '{}'))
+                                              citations = payload.get('citations', [])
+                                          
+                                          # Check for end of stream or errors
+                                          elif payload_type == 'genqa.endOfStreamType':
+                                              break
+                                      
+                                      except json.JSONDecodeError:
+                                          continue
+                          
+                          # Format the final answer
+                          answer_text = ''.join(complete_answer)
+                          
+                          if not answer_text:
+                              return "No answer could be generated for this query."
+                          
+                          # Add citations if available
+                          if citations:
+                              answer_text += "\n\nSources:\n"
+                              for i, citation in enumerate(citations, 1):
+                                  title = citation.get('title', 'Unknown')
+                                  uri = citation.get('uri', '')
+                                  answer_text += f"{i}. [{title}]({uri})\n"
+                          
+                          return answer_text
+                      
+                      except httpx.HTTPStatusError as e:
+                          error_body = e.response.text if hasattr(e.response, 'text') else str(e)
+                          error_msg = f"HTTP {e.response.status_code}: {error_body}"
+                          logger.error(f"generate_answer HTTP error: {error_msg}")
+                          logger.error(f"Request details: endpoint={endpoint}, query={query}")
+                          import traceback
+                          logger.error(f"Traceback: {traceback.format_exc()}")
+                          raise Exception(error_msg)
+                      except Exception as e:
+                          error_msg = f"Answer generation failed: {str(e)}"
+                          logger.error(f"generate_answer exception: {error_msg}")
+                          logger.error(f"Exception type: {type(e).__name__}")
+                          import traceback
+                          logger.error(f"Traceback: {traceback.format_exc()}")
+                          raise Exception(error_msg)
+                  EOF
+
+                # Create mcp_server.py (EXACT GitHub logic from coveo-labs/coveo-mcp-server)
+                - |
+                  cat > mcp_server.py << 'EOF'
+                  import json
+                  from typing import Any, Dict
+                  import json
+                  import logging
+                  import sys
+                  from typing import Any, Dict
+                  from dotenv import load_dotenv
+                  from mcp.server.fastmcp import FastMCP
+                  from coveo_api import make_coveo_request, retrieve_passages, generate_answer
+
+                  # Configure detailed logging
+                  logging.basicConfig(
+                      level=logging.DEBUG,
+                      format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+                      stream=sys.stdout
+                  )
+                  logger = logging.getLogger(__name__)
+
+                  logger.info("="*70)
+                  logger.info("MCP Server Starting...")
+                  logger.info("="*70)
+
+                  load_dotenv()
+
+                  logger.info("Initializing FastMCP with host=0.0.0.0, stateless_http=True")
+                  mcp = FastMCP(host="0.0.0.0", stateless_http=True)
+                  logger.info("FastMCP initialized successfully")
+
+                  @mcp.tool()
+                  async def search_coveo(query: str, numberOfResults: int = 5) -> Dict[str, Any]:
+                      """
+                      Use search_coveo when the goal is to retrieve metadata, titles, or URLs related to documents.
+                      Ideal for exploring information broadly, navigating multiple sources, or presenting lists of content without needing the content itself.
+                      
+                      Args:
+                          query (str): The search query.
+                          numberOfResults (int, optional): How many results to retrieve. Default: 5.
+                      
+                      Returns:
+                          Dict[str, Any]: Dictionary with 'results' key containing JSON string of search results, or 'error'/'message' key.
+                      """
+                      try:
+                          logger.info(f"search_coveo called: query='{query}', numberOfResults={numberOfResults}")
+                          payload = {
+                              "q": query,
+                              "numberOfResults": numberOfResults,
+                              "fieldsToExclude": [
+                                  "rankingInfo"
+                              ],
+                              "fieldsToInclude": [
+                                  "title",
+                                  "uri",
+                                  "objecttype",
+                                  "collection",
+                                  "source",
+                                  "filetype",
+                                  "project",
+                                  "documenttype",
+                                  "infobox_type",
+                                  "categories",
+                                  "data",
+                                  "clickableuri",
+                                  "summary",
+                                  "body",
+                                  "excerpt",
+                                  "printableUri",
+                                  "clickUri"
+                              ],
+                              "excerptLength": 500,
+                              "debugRankingInformation": False
+                          }
+                          data = await make_coveo_request(payload)
+                          
+                          if data and "error" not in data:
+                              if "results" in data and data["results"]:
+                                  # Convert results list to JSON string for MCP compatibility
+                                  return {"results": json.dumps(data["results"])}
+                              return {"message": "No results found for this query."}
+                          return {"error": data.get('error', 'Unknown error occurred')}
+                      except Exception as e:
+                          logger.error(f"search_coveo tool exception: {str(e)}")
+                          logger.error(f"Exception type: {type(e).__name__}")
+                          import traceback
+                          logger.error(f"Traceback: {traceback.format_exc()}")
+                          return {"error": f"Tool execution failed: {str(e)}"}
+
+                  @mcp.tool()
+                  async def passage_retrieval(query: str, numberOfPassages: int = 5) -> Dict[str, Any]:
+                      """
+                      Use passage_retrieval to extract highly relevant text snippets from documents.
+                      Useful when building answers, summaries, or even new documents from source material.
+                      Choose this tool when you need accurate, content-rich inputs to support generation beyond what a single answer can provide.
+                      
+                      Args:
+                          query (str): The search query.
+                          numberOfPassages (int, optional): How many passages to retrieve. Default: 5. Maximum: 20.
+                      
+                      Returns:
+                          Dict[str, Any]: Dictionary with 'passages' key containing JSON string of passages, or 'error'/'message' key.
+                      """
+                      try:
+                          if not query:
+                              return {"error": "Query cannot be empty"}
+                          
+                          passages = await retrieve_passages(query=query, number_of_passages=numberOfPassages)
+                          
+                          if not passages:
+                              return {"message": "No passages found for this query."}
+                          
+                          # Convert passages list to JSON string for MCP compatibility
+                          return {"passages": json.dumps(passages)}
+                      except Exception as e:
+                          logger.error(f"passage_retrieval tool exception: {str(e)}")
+                          logger.error(f"Exception type: {type(e).__name__}")
+                          import traceback
+                          logger.error(f"Traceback: {traceback.format_exc()}")
+                          return {"error": f"Tool execution failed: {str(e)}"}
+
+                  @mcp.tool()
+                  async def answer_question(query: str) -> Dict[str, Any]:
+                      """
+                      Use answer_question when the query requires a complete, consistent, and well-structured answer.
+                      This tool uses a prompt-engineered LLM, combining passages and documents, with safeguards to reduce hallucinations, ensure factual accuracy, and enforce security constraints.
+                      Designed for delivering clear, direct answers that are ready to consume.
+                      
+                      Args:
+                          query (str): The question to answer.
+                      
+                      Returns:
+                          Dict[str, Any]: The generated answer with citations or error message.
+                      """
+                      try:
+                          if not query:
+                              return {"error": "Query cannot be empty"}
+                          
+                          answer = await generate_answer(query)
+                          return {"answer": answer}
+                      except Exception as e:
+                          logger.error(f"answer_question tool exception: {str(e)}")
+                          logger.error(f"Exception type: {type(e).__name__}")
+                          import traceback
+                          logger.error(f"Traceback: {traceback.format_exc()}")
+                          return {"error": f"Tool execution failed: {str(e)}"}
+                  
+                  if __name__ == "__main__":
+                      logger.info("="*70)
+                      logger.info("Starting MCP server with streamable-http transport")
+                      logger.info("Server will be available at: http://0.0.0.0:8000/mcp")
+                      logger.info("Registered tools: search_coveo, passage_retrieval, answer_question")
+                      logger.info("="*70)
+                      
+                      try:
+                          mcp.run(transport="streamable-http")
+                      except Exception as e:
+                          logger.error(f"Failed to start MCP server: {e}")
+                          import traceback
+                          traceback.print_exc()
+                          sys.exit(1)
+                  EOF
+
+                # Create Dockerfile
+                - |
+                  cat > Dockerfile << 'EOF'
+                  FROM public.ecr.aws/docker/library/python:3.11-slim
+
+                  # Set working directory
+                  WORKDIR /app
+                  
+                  # Copy requirements and install dependencies
+                  COPY requirements.txt requirements.txt
+                  RUN pip install --no-cache-dir -r requirements.txt
+
+                  # Set AWS environment variables
+                  # Note: Coveo credentials will be passed by AgentCore Runtime at startup
+                  ENV AWS_REGION=us-east-1
+                  ENV AWS_DEFAULT_REGION=us-east-1
+
+                  # Create non-root user for security
+                  RUN useradd -m -u 1000 bedrock_agentcore
+
+                  # Copy application code
+                  COPY . .
+
+                  # Change ownership of app directory
+                  RUN chown -R bedrock_agentcore:bedrock_agentcore /app
+
+                  # Switch to non-root user
+                  USER bedrock_agentcore
+
+                  # Expose port
+                  EXPOSE 8000
+
+                  # Run the MCP server using module syntax (required for FastMCP)
+                  CMD ["python", "-m", "mcp_server"]
+                  EOF
+
+                # Build the Docker image (no build args needed - credentials passed at runtime)
+                - echo Building Coveo MCP server image...
+                - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+
+            post_build:
+              commands:
+                - echo Build completed on `date`
+                - echo Pushing the Coveo MCP server Docker image...
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                - echo Coveo MCP server Docker image pushed successfully
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-mcp-server-build"
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Module
+          Value: CodeBuild
+
+  # ========================================================================
+  # CUSTOM RESOURCE INVOCATIONS
+  # ========================================================================
+
+  TriggerCodeBuild:
+    Type: Custom::TriggerCodeBuild
+    DependsOn:
+      - MCPServerImageBuildProject
+      - CodeBuildTriggerFunction
+    Properties:
+      ServiceToken: !GetAtt CodeBuildTriggerFunction.Arn
+      ProjectName: !Ref MCPServerImageBuildProject
+      WaitForCompletion: "true"
+
+  # ========================================================================
+  # AGENTCORE MODULE - MCP Server Runtime
+  # ========================================================================
+
+  MCPServerRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Condition: CreateMCPRuntime
+    DependsOn:
+      - ECRRepository
+      - TriggerCodeBuild
+    Properties:
+      AgentRuntimeName: !Sub "${StackPrefix}_Coveo_MCPServer_Tools"
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Sub "${ECRRepository.RepositoryUri}:${ImageTag}"
+      RoleArn: !GetAtt AgentExecutionRole.Arn
+      NetworkConfiguration:
+        NetworkMode: !Ref NetworkMode
+      ProtocolConfiguration: MCP
+      Description: !Sub "MCP server runtime for ${AWS::StackName} - IAM authentication"
+
+# ============================================================================
+# OUTPUTS SECTION
+# ============================================================================
+Outputs:
+  # AGENTCORE MODULE OUTPUTS
+  MCPServerRuntimeId:
+    Condition: CreateMCPRuntime
+    Description: "ID of the created MCP server runtime"
+    Value: !GetAtt MCPServerRuntime.AgentRuntimeId
+    Export:
+      Name: !Sub "${AWS::StackName}-MCPServerRuntimeId"
+
+  MCPServerRuntimeArn:
+    Condition: CreateMCPRuntime
+    Description: "ARN of the created MCP server runtime"
+    Value: !GetAtt MCPServerRuntime.AgentRuntimeArn
+    Export:
+      Name: !Sub "${AWS::StackName}-MCPServerRuntimeArn"
+
+  MCPServerInvocationURL:
+    Condition: CreateMCPRuntime
+    Description: "URL to invoke the MCP server"
+    Value: !Sub
+      - "https://bedrock-agentcore.${AWS::Region}.amazonaws.com/runtimes/${EncodedArn}/invocations?qualifier=DEFAULT"
+      - EncodedArn: !Join
+          - ""
+          - - !Select [0, !Split [":", !GetAtt MCPServerRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [1, !Split [":", !GetAtt MCPServerRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [2, !Split [":", !GetAtt MCPServerRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [3, !Split [":", !GetAtt MCPServerRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [4, !Split [":", !GetAtt MCPServerRuntime.AgentRuntimeArn]]
+            - "%3A"
+            - !Select [5, !Split [":", !GetAtt MCPServerRuntime.AgentRuntimeArn]]
+            - "%2F"
+            - !Select [1, !Split ["/", !GetAtt MCPServerRuntime.AgentRuntimeArn]]
+    Export:
+      Name: !Sub "${AWS::StackName}-MCPServerInvocationURL"
+
+  # ECR OUTPUTS
+  ECRRepositoryUri:
+    Description: "URI of the ECR repository"
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRRepositoryUri"
+
+  # IAM OUTPUTS
+  AgentExecutionRoleArn:
+    Description: "ARN of the agent execution role"
+    Value: !GetAtt AgentExecutionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AgentExecutionRoleArn"
+
+  # COGNITO INFO (from main stack)
+  CognitoUserPoolIdUsed:
+    Description: "Cognito User Pool ID (from main workshop stack)"
+    Value: !Ref CognitoUserPoolId
+
+  CognitoUserPoolClientIdUsed:
+    Description: "Cognito User Pool Client ID (from main workshop stack)"
+    Value: !Ref CognitoUserPoolClientId
+
+  CognitoDiscoveryUrl:
+    Description: "Cognito OIDC Discovery URL"
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}/.well-known/openid-configuration"
+
+  # AUTHENTICATION INFO (from main stack)
+  TestUsername:
+    Description: "Test username for authentication (created by main stack)"
+    Value: "testuser@example.com"
+
+  TestPassword:
+    Description: "Test password for authentication (created by main stack)"
+    Value: "TempPassword123!"
