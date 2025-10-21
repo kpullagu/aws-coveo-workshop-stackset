@@ -1,21 +1,39 @@
 # Workshop UI Frontend
 
-This directory contains the complete frontend implementation for the Workshop UI, including both the React application and the Express BFF (Backend for Frontend) server.
+This directory contains the complete frontend implementation for the AWS Coveo Workshop, including both the React application and the Express BFF (Backend for Frontend) server. The UI features a modern search interface with facet filters, real-time results, and support for three different backend architectures.
 
 ## Directory Structure
 
 ```
 frontend/
-├── server.js                 # Express BFF server (675 lines)
-├── package.json              # BFF dependencies
+├── server.js                 # Express BFF server
+├── package.json              # BFF dependencies (express, aws-sdk, etc.)
 ├── package-lock.json         # BFF dependency lock
-├── node_modules/             # BFF dependencies (ignored in git)
+├── node_modules/             # BFF dependencies (not in git)
+├── Dockerfile                # Multi-stage Docker build
+├── README.md                 # This file
 └── client/                   # React application
     ├── package.json          # React dependencies
     ├── package-lock.json     # React dependency lock
-    ├── node_modules/         # React dependencies (ignored in git)
+    ├── node_modules/         # React dependencies (not in git)
+    ├── .env                  # React environment variables
     ├── public/               # Static assets
+    │   ├── index.html        # HTML template
+    │   └── manifest.json     # PWA manifest
     ├── src/                  # React source code
+    │   ├── components/       # React components
+    │   │   ├── SearchHeader.js      # Search bar with centered clear button
+    │   │   ├── SearchResults.js     # Results display with load more
+    │   │   ├── Sidebar.js           # Scrollable facet filters
+    │   │   ├── AuthProvider.js      # Cognito authentication
+    │   │   ├── LoginButton.js       # Login/logout UI
+    │   │   ├── QuickViewModal.js    # Document preview modal
+    │   │   └── ChatBot.js           # Chat interface
+    │   ├── services/
+    │   │   └── api.js        # API client (search, passages, answer, chat)
+    │   ├── App.js            # Main application component
+    │   ├── index.js          # React entry point
+    │   └── index.css         # Global styles
     └── build/                # Production build (created by npm run build)
 ```
 
@@ -23,30 +41,36 @@ frontend/
 
 ### Express BFF Server (`server.js`)
 
-**Purpose**: Backend for Frontend - Routes React UI requests to API Gateway
+**Purpose**: Backend for Frontend - Proxies React UI requests to AWS API Gateway
 
 **Features**:
-- 4 API endpoints: `/api/search`, `/api/passages`, `/api/answer`, `/api/chat`
+- 5 API endpoints: `/api/search`, `/api/passages`, `/api/answer`, `/api/chat`, `/api/suggest`
 - 3 backend modes: Coveo, BedrockAgent, CoveoMCP
-- Cognito JWT authentication
+- Cognito JWT token validation
 - Health check endpoint: `/api/health`
-- Serves React static build
+- Serves React static build from `client/build/`
 
 **Key Functions**:
-- `invokeAPIGateway()` - Invokes API Gateway endpoints
+- Routes all requests to **API Gateway** (not direct Lambda invocation)
 - `verifyToken()` - Validates Cognito JWT tokens
-- `switch(backendMode)` - Routes to appropriate backend based on mode
+- `switch(backendMode)` - Routes to appropriate API Gateway endpoint based on mode
+- Handles CORS and request/response transformation
 
 ### React Application (`client/`)
 
-**Purpose**: Modern search UI with multi-backend support
+**Purpose**: Modern, responsive search UI with multi-backend support
 
 **Features**:
-- Search interface with facets
-- Passage retrieval
-- Answer generation
-- Multi-turn chat
-- Backend mode switching (Coveo/BedrockAgent/CoveoMCP)
+- 🔍 **Search interface** with real-time results
+- 📊 **Scrollable facet filters** (Project, Document Type, etc.)
+- ✨ **Centered clear button** in search box
+- 📄 **Passage retrieval** with quick view
+- 🤖 **AI answer generation** with citations
+- 💬 **Multi-turn chat** interface
+- 🔄 **Backend mode switching** (Coveo/BedrockAgent/CoveoMCP)
+- 🔐 **Cognito authentication** with JWT tokens
+- 📱 **Responsive design** for mobile and desktop
+- ⚡ **Load more** functionality for search results
 
 ## Development
 
@@ -135,7 +159,21 @@ COGNITO_REGION=us-east-1
 COGNITO_DOMAIN=workshop-auth
 ```
 
-**Note:** Lambda ARNs are no longer needed in frontend .env - the server routes through API Gateway instead.
+**Note:** The BFF server routes all requests through API Gateway. No direct Lambda invocation is needed.
+
+## Request Flow
+
+**Important:** The BFF server does NOT invoke Lambda functions directly. All requests flow through API Gateway:
+
+```
+User Browser → React UI → Express BFF → API Gateway → Lambda → External APIs
+```
+
+1. **React UI** sends HTTP request to BFF server
+2. **Express BFF** validates JWT token and forwards to API Gateway
+3. **API Gateway** authorizes request and invokes appropriate Lambda
+4. **Lambda** processes request and calls external APIs (Coveo, Bedrock, etc.)
+5. **Response** flows back through the same chain
 
 ## API Endpoints
 
@@ -187,20 +225,22 @@ POST /api/chat
 
 ## Backend Modes
 
+The BFF server routes all requests through **API Gateway**, which then invokes the appropriate Lambda functions:
+
 ### Coveo Mode (Production Ready)
-- All endpoints → Direct Lambda → Coveo API
+- BFF → API Gateway → Lambda (search-proxy, passages-proxy, answering-proxy) → Coveo API
 - Fast, single-turn responses
-- No conversation memory
+- Direct Coveo API integration
 
-### BedrockAgent Mode (Hybrid)
-- `/api/search`, `/api/passages` → Direct Lambda (fast)
-- `/api/answer`, `/api/chat` → Bedrock Agent (intelligent, multi-turn)
-- Optimized for speed + intelligence balance
+### BedrockAgent Mode (Multi-turn AI)
+- BFF → API Gateway → Lambda (agentcore-runtime) → AgentCore Runtime → Bedrock
+- Multi-turn conversations with streaming responses
+- AgentCore Memory for conversation context
 
-### CoveoMCP Mode
-- All endpoints → AgentCore Router → MCP Server
-- Multi-turn with AgentCore Memory
-- Full conversation context
+### CoveoMCP Mode (Tool-based)
+- BFF → API Gateway → Lambda (agentcore-runtime) → AgentCore Runtime → MCP Server → Coveo API
+- Tool-based orchestration with MCP protocol
+- Extensible architecture for custom tools
 
 ## Testing
 
@@ -221,66 +261,75 @@ curl -X POST http://localhost:3003/api/chat \
 
 ## Deployment
 
-See root directory files:
-- `deploy-to-aws.ps1` - Windows deployment script
-- `deploy-to-aws.sh` - Linux/Mac deployment script
-- `DEPLOYMENT_GUIDE.md` - Comprehensive deployment guide
-- `DEPLOYMENT_QUICK_REF.md` - Quick reference
+The frontend is deployed to **AWS App Runner** as a containerized application.
+
+### Deployment Scripts
+
+Located in the root `scripts/` directory:
+- `deploy-complete-workshop.sh` - Complete one-click deployment (includes UI)
+- `deploy-ui-apprunner.sh` - Deploy UI to App Runner
+- `destroy.sh` - Complete cleanup including UI
+
+### Deployment Process
+
+1. **Build Docker image** - Multi-stage build (React + Express)
+2. **Push to ECR** - Amazon Elastic Container Registry
+3. **Deploy to App Runner** - Automatic deployment and scaling
+4. **Update Cognito callbacks** - Configure OAuth redirect URLs
+
+### Manual Deployment
+
+```bash
+# Deploy UI to App Runner
+cd scripts
+./deploy-ui-apprunner.sh --region us-east-1
+```
 
 ## Architecture
 
 ```
-┌─────────────────┐
-│   React UI      │  (frontend/client)
-│  (Port 3000)    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│   Express BFF                   │  (frontend/server.js)
-│   (Port 3003)                   │
-│   - Routes to Lambdas           │
-│   - Transforms responses        │
-│   - Handles auth                │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│   AWS Lambda Functions (5)      │
-│   - search-proxy                │
-│   - passages-proxy              │
-│   - answering-proxy             │
-│   - bedrock-agent-chat          │
-│   - agentcore-router            │
-└─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    React UI                             │
+│                 (frontend/client)                       │
+│              Port 3000 (dev) / 3003 (prod)              │
+│  • Search Interface  • Facet Filters  • Auth UI        │
+└────────────────────────┬────────────────────────────────┘
+                         │ HTTP Requests
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│                  Express BFF Server                     │
+│                 (frontend/server.js)                    │
+│                     Port 3003                           │
+│  • JWT Validation  • CORS Handling  • Request Routing  │
+│  • Serves React Build  • Health Check                  │
+└────────────────────────┬────────────────────────────────┘
+                         │ HTTPS to API Gateway
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│                   AWS API Gateway                       │
+│  • /api/search  • /api/passages  • /api/answer         │
+│  • /api/chat    • /api/suggest   • /health             │
+│  • JWT Authorizer  • Request Validation                │
+└────────────────────────┬────────────────────────────────┘
+                         │ Invokes Lambda Functions
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│                  AWS Lambda Functions                   │
+│  • search-proxy          → Coveo Search API             │
+│  • passages-proxy        → Coveo Passages API           │
+│  • answering-proxy       → Coveo Answering API          │
+│  • query-suggest-proxy   → Coveo Query Suggest API      │
+│  • html-proxy            → Coveo HTML API               │
+│  • agentcore-runtime     → AgentCore Runtime/MCP        │
+│  • bedrock-agent-chat    → Bedrock Agent                │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Troubleshooting
-
-### Port 3003 already in use
-```bash
-# Windows
-Get-Process -Id (Get-NetTCPConnection -LocalPort 3003).OwningProcess
-Stop-Process -Id <PID>
-
-# Linux/Mac
-lsof -ti:3003 | xargs kill
-```
-
-### React build not found
-```bash
-cd frontend/client
-npm run build
-```
-
-### Lambda invocation fails
-Check:
-1. AWS credentials configured
-2. Lambda ARNs correct in `.env`
-3. IAM permissions for lambda:InvokeFunction
-
-### CORS errors
-Update CORS config in `server.js` line ~21
+**Key Points:**
+- BFF **never** calls Lambda directly - all requests go through API Gateway
+- API Gateway handles authentication, authorization, and request validation
+- Lambda functions are invoked by API Gateway, not by the BFF
+- This architecture provides better security, monitoring, and scalability
 
 ## File Locations
 
@@ -293,24 +342,41 @@ Update CORS config in `server.js` line ~21
 
 ## Related Documentation
 
-- `../DEPLOYMENT_GUIDE.md` - Full deployment instructions
-- `../TEST_RESULTS.md` - Test results and known issues
-- `../COVEO_API_PAYLOADS.md` - Lambda input/output contracts
-- `../README_IMPLEMENTATION.md` - Implementation summary
+- `../README.md` - Main project documentation
+- `.env.example` - Environment variable template (in root directory)
 
-## Version
+## Technology Stack
 
-- **BFF Server**: 675 lines (optimized)
-- **React App**: Latest build with multi-backend support
-- **Node.js**: 18.x
-- **Docker**: Multi-stage optimized build
+- **BFF Server**: Express.js with AWS SDK
+- **React App**: React 18 with Hooks
+- **Styling**: Styled Components with Framer Motion animations
+- **Authentication**: AWS Cognito with JWT
+- **API Client**: Axios for HTTP requests
+- **Node.js**: 18.x LTS
+- **Docker**: Multi-stage build for optimized images
+- **Deployment**: AWS App Runner with auto-scaling
+
+## Recent Updates
+
+### UI Improvements
+- ✅ **Scrollable facet filters** with custom scrollbar styling
+- ✅ **Load more functionality** for search results
+- ✅ **Quick view modal** for document preview
+- ✅ **Responsive design** improvements
+
+### Backend Integration
+- ✅ **Three backend modes** fully implemented
+- ✅ **AgentCore Runtime** integration
+- ✅ **MCP Server** support
+- ✅ **Streaming responses** for AI answers
 
 ## Status
 
-✅ **Production Ready** (Coveo mode)  
-⚠️ BedrockAgent mode needs Lambda config fix  
-⏸️ CoveoMCP mode needs MCP server setup
+✅ **Production Ready** - All three backend modes operational  
+✅ **Coveo Mode** - Direct API integration (fast, single-turn)  
+✅ **BedrockAgent Mode** - AgentCore Runtime with streaming  
+✅ **CoveoMCP Mode** - MCP Server with tool orchestration
 
 ---
 
-**Note**: This consolidated `/frontend` directory replaces the previous `/client` and `/ui` directories. All UI-related code is now in one place for easier maintenance.
+**Note**: This is the complete frontend implementation for the AWS Coveo Workshop. All UI components, BFF server, and Docker configuration are in this directory.
