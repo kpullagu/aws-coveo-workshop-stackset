@@ -739,8 +739,6 @@ For support and questions:
 
 ## 🔗 Repository
 
-- **GitHub**: https://github.com/kpullagu/aws-coveo-workshop.git
-- **Branch**: `main`
 - **License**: MIT (see LICENSE file)
 
 ---
