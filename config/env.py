@@ -4,7 +4,6 @@ Centralized environment configuration loader for Lambda functions.
 This module provides a unified way to load configuration from:
 1. Environment variables (highest priority)
 2. AWS Systems Manager Parameter Store
-3. AWS Secrets Manager
 
 Usage in Lambda functions:
     from config.env import get_config
@@ -22,7 +21,6 @@ from functools import lru_cache
 
 # AWS clients (initialized lazily)
 _ssm_client = None
-_secrets_client = None
 
 
 def get_ssm_client():
@@ -31,14 +29,6 @@ def get_ssm_client():
     if _ssm_client is None:
         _ssm_client = boto3.client('ssm', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
     return _ssm_client
-
-
-def get_secrets_client():
-    """Get or create Secrets Manager client (singleton pattern)."""
-    global _secrets_client
-    if _secrets_client is None:
-        _secrets_client = boto3.client('secretsmanager', region_name=os.environ.get('AWS_REGION', 'us-east-1'))
-    return _secrets_client
 
 
 def get_parameter(name: str, decrypt: bool = False) -> Optional[str]:
@@ -63,25 +53,7 @@ def get_parameter(name: str, decrypt: bool = False) -> Optional[str]:
         return None
 
 
-def get_secret(secret_id: str) -> Optional[str]:
-    """
-    Retrieve a secret from AWS Secrets Manager.
-    
-    Args:
-        secret_id: Secret name or ARN
-        
-    Returns:
-        Secret string value or None if not found
-    """
-    try:
-        sm = get_secrets_client()
-        response = sm.get_secret_value(SecretId=secret_id)
-        return response.get('SecretString')
-    except sm.exceptions.ResourceNotFoundException:
-        return None
-    except Exception as e:
-        print(f"Error retrieving secret {secret_id}: {e}")
-        return None
+
 
 
 @lru_cache(maxsize=1)
@@ -91,8 +63,7 @@ def get_config() -> Dict[str, Any]:
     
     Priority order:
     1. Environment variables (direct values)
-    2. SSM Parameter Store (via env var with /SSM/ prefix)
-    3. Secrets Manager (via env var with /SECRET/ prefix)
+    2. SSM Parameter Store
     
     Returns:
         Dictionary of configuration values
@@ -110,7 +81,7 @@ def get_config() -> Dict[str, Any]:
         },
         'COVEO_SEARCH_API_KEY': {
             'env': 'COVEO_SEARCH_API_KEY',
-            'secret': f'{stack_prefix}/coveo/search-api-key',
+            'ssm': f'/{stack_prefix}/coveo/search-api-key',
             'required': True
         },
         'COVEO_ANSWERING_CONFIG_ID': {
@@ -205,19 +176,15 @@ def get_config() -> Dict[str, Any]:
         
         # 2. Try SSM Parameter Store
         if value is None and sources.get('ssm'):
-            value = get_parameter(sources['ssm'], decrypt=True)
+            value = get_parameter(sources['ssm'], decrypt=False)
         
-        # 3. Try Secrets Manager
-        if value is None and sources.get('secret'):
-            value = get_secret(sources['secret'])
-        
-        # 4. Use default value
+        # 3. Use default value
         if value is None and sources.get('default'):
             value = sources['default']
         
         # Check if required value is missing
         if value is None and sources.get('required'):
-            raise ValueError(f"Required configuration '{key}' not found in environment, SSM, or Secrets Manager")
+            raise ValueError(f"Required configuration '{key}' not found in environment or SSM Parameter Store")
         
         config[key] = value
     

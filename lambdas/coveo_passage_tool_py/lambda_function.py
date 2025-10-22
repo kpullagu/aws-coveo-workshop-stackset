@@ -54,24 +54,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import boto3
 
 def get_coveo_config():
-    """Get Coveo configuration from environment variables and Secrets Manager."""
+    """Get Coveo configuration from environment variables."""
     try:
-        # Get basic config from environment
+        # Get all config from environment variables
         org_id = os.environ['COVEO_ORG_ID']
+        api_key = os.environ['COVEO_SEARCH_API_KEY']
         platform_url = os.environ.get('COVEO_PLATFORM_URL', 'https://platform.cloud.coveo.com')
         search_hub = os.environ.get('COVEO_SEARCH_HUB', 'aws-workshop')
         
-        # Get API key from SSM Parameter Store
-        ssm_client = boto3.client('ssm')
-        param_name = os.environ.get('COVEO_SEARCH_API_KEY_PARAM', '/workshop/coveo/search-api-key')
-        
-        try:
-            response = ssm_client.get_parameter(Name=param_name, WithDecryption=False)
-            api_key = response['Parameter']['Value']
-        except Exception as e:
-            logger.warning(f"Failed to get API key from SSM: {e}")
-            # Fallback to environment variable
-            api_key = os.environ.get('COVEO_SEARCH_API_KEY', '')
+        if not api_key:
+            raise ValueError("COVEO_SEARCH_API_KEY environment variable is empty")
         
         return {
             'org_id': org_id,
@@ -81,6 +73,7 @@ def get_coveo_config():
         }
     except KeyError as e:
         logger.error(f"Missing required environment variable: {e}")
+        logger.error("Required: COVEO_ORG_ID, COVEO_SEARCH_API_KEY")
         raise
 
 # Configure logging

@@ -607,7 +607,7 @@ const formatDate = (dateString) => {
   }
 };
 
-const SearchResults = ({ query, answer, passages, searchResults, backendMode, onLoadMore, loadingMore }) => {
+const SearchResults = ({ query, answer, passages, searchResults, backendMode, onLoadMore, loadingMore, loading }) => {
   const [quickViewResult, setQuickViewResult] = useState(null);
   const [quickViewPassage, setQuickViewPassage] = useState(null);
   const [showFullAnswer, setShowFullAnswer] = useState(false);
@@ -617,7 +617,7 @@ const SearchResults = ({ query, answer, passages, searchResults, backendMode, on
   if (answer) {
     console.log('🔍 Answer structure:', {
       hasAnswer: !!answer.answer,
-      hasAnswerText: !!answer.answerText, 
+      hasAnswerText: !!answer.answerText,
       hasResponse: !!answer.response,
       answerLength: (answer.answer || answer.answerText || answer.response || '').length,
       hasCitations: !!(answer.citations && answer.citations.length > 0)
@@ -664,11 +664,11 @@ const SearchResults = ({ query, answer, passages, searchResults, backendMode, on
     const truncated = text.substring(0, maxLength);
     const lastSentence = truncated.lastIndexOf('.');
     const lastSpace = truncated.lastIndexOf(' ');
-    
+
     // Use sentence boundary if it's within reasonable range, otherwise use word boundary
-    const cutPoint = lastSentence > maxLength - 100 ? lastSentence + 1 : 
-                     lastSpace > maxLength - 50 ? lastSpace : maxLength;
-    
+    const cutPoint = lastSentence > maxLength - 100 ? lastSentence + 1 :
+      lastSpace > maxLength - 50 ? lastSpace : maxLength;
+
     return text.substring(0, cutPoint).trim() + '...';
   };
 
@@ -696,90 +696,90 @@ const SearchResults = ({ query, answer, passages, searchResults, backendMode, on
   return (
     <ResultsContainer>
       {/* AI Answer Section - Show when there's a search query */}
-      {hasSearchQuery && (
+      {hasSearchQuery && !loading && (
         answer && (answer.answer || answer.answerText || answer.response) ? (
-        <Section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <SectionHeader>
-            <SectionTitle>AI Answer</SectionTitle>
-            <SectionBadge>{backendMode}</SectionBadge>
-          </SectionHeader>
-          <AnswerContent>
-            <AnswerText>
-              <ReactMarkdown>
-                {(() => {
-                  const fullAnswerText = answer.answer || answer.answerText || answer.response || '';
-                  return showFullAnswer ? fullAnswerText : truncateText(fullAnswerText, 400);
-                })()}
-              </ReactMarkdown>
-            </AnswerText>
+          <Section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <SectionHeader>
+              <SectionTitle>AI Answer</SectionTitle>
+              <SectionBadge>{backendMode}</SectionBadge>
+            </SectionHeader>
+            <AnswerContent>
+              <AnswerText>
+                <ReactMarkdown>
+                  {(() => {
+                    const fullAnswerText = answer.answer || answer.answerText || answer.response || '';
+                    return showFullAnswer ? fullAnswerText : truncateText(fullAnswerText, 400);
+                  })()}
+                </ReactMarkdown>
+              </AnswerText>
 
-            {(() => {
-              const fullAnswerText = answer.answer || answer.answerText || answer.response || '';
-              return fullAnswerText && fullAnswerText.length > 400;
-            })() && (
-              <ShowMoreButton
-                onClick={toggleShowMore}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {showFullAnswer ? (
-                  <>
-                    <FiChevronUp size={16} />
-                    Show Less
-                  </>
-                ) : (
-                  <>
-                    <FiChevronDown size={16} />
-                    Show More
-                  </>
+              {(() => {
+                const fullAnswerText = answer.answer || answer.answerText || answer.response || '';
+                return fullAnswerText && fullAnswerText.length > 400;
+              })() && (
+                  <ShowMoreButton
+                    onClick={toggleShowMore}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {showFullAnswer ? (
+                      <>
+                        <FiChevronUp size={16} />
+                        Show Less
+                      </>
+                    ) : (
+                      <>
+                        <FiChevronDown size={16} />
+                        Show More
+                      </>
+                    )}
+                  </ShowMoreButton>
                 )}
-              </ShowMoreButton>
-            )}
 
-            {(answer.citations && answer.citations.length > 0) && (
-              <Citations>
-                <CitationsTitle>Sources:</CitationsTitle>
-                {answer.citations.map((citation, index) => (
-                  <CitationItem key={index}>
-                    <span>{index + 1}.</span>
-                    <a href={citation.uri || citation.clickableuri || citation.clickUri} target="_blank" rel="noopener noreferrer">
-                      {citation.title}
-                    </a>
-                    {citation.project && (
-                      <ProjectBadge project={citation.project}>
-                        {citation.project}
-                      </ProjectBadge>
-                    )}
-                  </CitationItem>
-                ))}
-              </Citations>
-            )}
+              {(answer.citations && answer.citations.length > 0) && (
+                <Citations>
+                  <CitationsTitle>Sources:</CitationsTitle>
+                  {answer.citations.map((citation, index) => (
+                    <CitationItem key={index}>
+                      <span>{index + 1}.</span>
+                      <a href={citation.uri || citation.clickableuri || citation.clickUri} target="_blank" rel="noopener noreferrer">
+                        {citation.title}
+                      </a>
+                      {citation.project && (
+                        <ProjectBadge project={citation.project}>
+                          {citation.project}
+                        </ProjectBadge>
+                      )}
+                    </CitationItem>
+                  ))}
+                </Citations>
+              )}
 
-            {/* Fallback: Show sources from search results if no direct citations */}
-            {(!answer.citations || answer.citations.length === 0) && searchResults && searchResults.results && searchResults.results.length > 0 && (
-              <Citations>
-                <CitationsTitle>Related Sources:</CitationsTitle>
-                {searchResults.results.slice(0, 3).map((result, index) => (
-                  <CitationItem key={index}>
-                    <span>{index + 1}.</span>
-                    <a href={result.clickUri} target="_blank" rel="noopener noreferrer">
-                      {result.title}
-                    </a>
-                    {result.raw?.project && (
-                      <ProjectBadge project={result.raw.project}>
-                        {result.raw.project}
-                      </ProjectBadge>
-                    )}
-                  </CitationItem>
-                ))}
-              </Citations>
-            )}
-          </AnswerContent>
-        </Section>
+              {/* Fallback: Show sources from search results if no direct citations */}
+              {(!answer.citations || answer.citations.length === 0) && searchResults && searchResults.results && searchResults.results.length > 0 && (
+                <Citations>
+                  <CitationsTitle>Related Sources:</CitationsTitle>
+                  {searchResults.results.slice(0, 3).map((result, index) => (
+                    <CitationItem key={index}>
+                      <span>{index + 1}.</span>
+                      <a href={result.clickUri} target="_blank" rel="noopener noreferrer">
+                        {result.title}
+                      </a>
+                      {result.raw?.project && (
+                        <ProjectBadge project={result.raw.project}>
+                          {result.raw.project}
+                        </ProjectBadge>
+                      )}
+                    </CitationItem>
+                  ))}
+                </Citations>
+              )}
+            </AnswerContent>
+          </Section>
         ) : (
           // Fallback when no answer is available
           <Section
@@ -793,7 +793,7 @@ const SearchResults = ({ query, answer, passages, searchResults, backendMode, on
             </SectionHeader>
             <AnswerContent>
               <FallbackMessage>
-                I don't have enough information to generate a comprehensive answer for your query <span className="query-highlight">"{query}"</span>. 
+                I don't have enough information to generate a comprehensive answer for your query <span className="query-highlight">"{query}"</span>.
                 Please check the search results and relevant passages below for detailed information.
               </FallbackMessage>
             </AnswerContent>

@@ -108,29 +108,18 @@ else
     log_warning "COVEO_ANSWER_CONFIG_ID is empty or not configured, skipping SSM parameter creation"
 fi
 
-# 3. Put Coveo Search API Key in Secrets Manager
-log_info "Storing Coveo Search API Key in Secrets Manager..."
-aws secretsmanager create-secret \
-    --name "${STACK_PREFIX}/coveo/search-api-key" \
-    --secret-string "$COVEO_SEARCH_API_KEY" \
-    --region "$AWS_REGION" 2>/dev/null || \
-aws secretsmanager update-secret \
-    --secret-id "${STACK_PREFIX}/coveo/search-api-key" \
-    --secret-string "$COVEO_SEARCH_API_KEY" \
-    --region "$AWS_REGION" > /dev/null
-
-log_success "Stored: ${STACK_PREFIX}/coveo/search-api-key (Secrets Manager)"
-
-# 4. Also store API Key in SSM Parameter Store as SecureString
-log_info "Storing Coveo Search API Key in SSM Parameter Store (SecureString)..."
+# 3. Store API Key in SSM Parameter Store as String (not SecureString)
+# Note: Using String type instead of SecureString for CloudFormation SSM parameter resolution
+# CloudFormation's {{resolve:ssm:}} only works with String type parameters
+log_info "Storing Coveo Search API Key in SSM Parameter Store..."
 aws ssm put-parameter \
     --name "/${STACK_PREFIX}/coveo/search-api-key" \
     --value "$COVEO_SEARCH_API_KEY" \
-    --type "SecureString" \
+    --type "String" \
     --overwrite \
     --region "$AWS_REGION" > /dev/null
 
-log_success "Stored: /${STACK_PREFIX}/coveo/search-api-key (SSM SecureString)"
+log_success "Stored: /${STACK_PREFIX}/coveo/search-api-key (SSM String)"
 
 echo ""
 log_success "All secrets seeded successfully! 🎉"

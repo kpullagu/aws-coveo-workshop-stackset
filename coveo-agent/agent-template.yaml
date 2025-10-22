@@ -219,8 +219,8 @@ Resources:
         OTEL_TRACES_EXPORTER: "xray"
         OTEL_METRICS_EXPORTER: "cloudwatch"
         OTEL_LOGS_EXPORTER: "cloudwatch"
-        OTEL_SERVICE_NAME: !Sub "${StackPrefix}-coveo-agent"
-        OTEL_RESOURCE_ATTRIBUTES: !Sub "service.name=${StackPrefix}-coveo-agent,service.namespace=workshop,deployment.environment=production"
+        OTEL_SERVICE_NAME: !Sub "${StackPrefix}_CoveoAgent"
+        OTEL_RESOURCE_ATTRIBUTES: !Sub "service.name=${StackPrefix}_CoveoAgent,service.namespace=workshop,deployment.environment=production"
       Tags:
         Name: !Sub '${AWS::StackName}-agent-runtime'
         Project: CoveoAWSWorkshop

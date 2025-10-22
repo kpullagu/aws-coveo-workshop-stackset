@@ -475,7 +475,7 @@ POST /api/suggest               # Query suggestions
 - **API Gateway Authorization** with JWT validation
 - **IAM Roles** with least privilege access
 - **Permission Boundaries** for enhanced security
-- **Secrets Manager** for API key storage
+- **SSM Parameter Store** for API key and configuration storage
 - **VPC Endpoints** for secure AWS service communication
 
 ## 📊 Monitoring and Observability
@@ -719,8 +719,7 @@ User Query → [Route by Intent] → Coveo API (Facts)
 - ✅ **IAM roles** with least privilege
 
 ### Data Protection
-- ✅ **Secrets Manager** for API keys
-- ✅ **Parameter Store** for configuration
+- ✅ **SSM Parameter Store** for API keys and configuration
 - ✅ **Encryption at rest** for S3 and databases
 - ✅ **TLS encryption** for all API communications
 

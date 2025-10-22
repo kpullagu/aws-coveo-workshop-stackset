@@ -7,10 +7,12 @@ This Lambda function:
 3. Invokes Bedrock Agent with retrieved passages for grounded answers
 4. Maintains sessionId for multi-turn conversation memory
 
-Environment Variables:
+Environment Variables (Required):
     - STACK_PREFIX: Stack prefix for SSM parameters
-    - AWS_REGION: AWS region for Bedrock and SSM
-    - LOG_LEVEL: Logging level
+
+Environment Variables (Optional):
+    - AWS_REGION: AWS region for Bedrock and SSM (default: us-east-1)
+    - LOG_LEVEL: Logging level (default: INFO)
 
 Request Body (Full Coveo Payload):
     {
@@ -65,19 +67,18 @@ def get_coveo_passages(query: str, coveo_payload: Dict[str, Any]) -> List[Dict[s
         List of passage objects with content and metadata
     """
     try:
-        # Get Coveo API key from Secrets Manager (consistent with other Lambda functions)
-        secrets_client = boto3.client('secretsmanager', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
+        # Get Coveo configuration from SSM Parameter Store
         ssm_client = boto3.client('ssm', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
         stack_prefix = os.environ.get('STACK_PREFIX', 'workshop')
         
-        # Get Coveo API key from Secrets Manager
-        secret_name = f'{stack_prefix}/coveo/search-api-key'
+        # Get Coveo API key from SSM Parameter Store
+        param_name = f'/{stack_prefix}/coveo/search-api-key'
         try:
-            response = secrets_client.get_secret_value(SecretId=secret_name)
-            coveo_api_key = response['SecretString']
+            response = ssm_client.get_parameter(Name=param_name, WithDecryption=False)
+            coveo_api_key = response['Parameter']['Value']
         except Exception as e:
-            logger.error(f"Failed to get API key from Secrets Manager: {e}")
-            raise Exception(f"Could not retrieve Coveo API key from Secrets Manager: {secret_name}")
+            logger.error(f"Failed to get API key from SSM: {e}")
+            raise Exception(f"Could not retrieve Coveo API key from SSM Parameter Store: {param_name}")
         
         # Use organization ID from payload (more efficient)
         coveo_org_id = coveo_payload.get('organizationId')

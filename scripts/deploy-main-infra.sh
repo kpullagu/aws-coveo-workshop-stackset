@@ -323,6 +323,52 @@ else
     LAYER_PARAM="LambdaLayerArn="
 fi
 
+# IMPORTANT: Create SSM parameters BEFORE CloudFormation deployment
+# CloudFormation uses {{resolve:ssm:...}} which requires parameters to exist
+log_info "Creating SSM parameters before CloudFormation deployment..."
+
+# Store Coveo Org ID in SSM Parameter Store
+log_info "Storing Coveo Org ID in SSM Parameter Store..."
+aws ssm put-parameter \
+    --name "/${STACK_PREFIX}/coveo/org-id" \
+    --value "$COVEO_ORG_ID" \
+    --type "String" \
+    --overwrite \
+    --description "Coveo organization ID" \
+    --region "$AWS_REGION" >/dev/null 2>&1
+
+log_success "Stored: /${STACK_PREFIX}/coveo/org-id"
+
+# Store Coveo Answer Config ID in SSM
+log_info "Storing Coveo Answer Config ID in SSM..."
+if [ -n "$COVEO_ANSWER_CONFIG_ID" ] && [ "$COVEO_ANSWER_CONFIG_ID" != "NOT_CONFIGURED" ]; then
+    aws ssm put-parameter \
+        --name "/${STACK_PREFIX}/coveo/answer-config-id" \
+        --value "$COVEO_ANSWER_CONFIG_ID" \
+        --type "String" \
+        --overwrite \
+        --description "Coveo Answer API configuration ID" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+    
+    log_success "Stored: /${STACK_PREFIX}/coveo/answer-config-id"
+else
+    log_warning "COVEO_ANSWER_CONFIG_ID is empty or not configured, skipping SSM parameter creation"
+fi
+
+# Store Coveo Search API Key in SSM Parameter Store as plain String
+log_info "Storing Coveo Search API Key in SSM Parameter Store (String)..."
+aws ssm put-parameter \
+    --name "/${STACK_PREFIX}/coveo/search-api-key" \
+    --value "$COVEO_SEARCH_API_KEY" \
+    --type "String" \
+    --overwrite \
+    --region "$AWS_REGION" >/dev/null 2>&1
+
+log_success "Stored: /${STACK_PREFIX}/coveo/search-api-key (SSM String)"
+
+log_success "All SSM parameters created successfully!"
+echo ""
+
 aws cloudformation deploy \
     --template-file cfn/master.yml \
     --stack-name "${STACK_PREFIX}-master" \
@@ -392,54 +438,8 @@ if [ -n "$API_GATEWAY_URL" ] && [ "$API_GATEWAY_URL" != "None" ]; then
     log_success "Created SSM parameter: /${STACK_PREFIX}/coveo/api-base-url"
 fi
 
-log_info "Seeding Coveo credentials and configuration..."
-
-# Environment variables should already be loaded from the beginning of the script
-
-# Environment variables were already validated at the beginning of the script
-
-# Store Coveo Org ID in SSM Parameter Store
-log_info "Storing Coveo Org ID in SSM Parameter Store..."
-aws ssm put-parameter \
-    --name "/${STACK_PREFIX}/coveo/org-id" \
-    --value "$COVEO_ORG_ID" \
-    --type "String" \
-    --overwrite \
-    --description "Coveo organization ID" \
-    --region "$AWS_REGION" >/dev/null 2>&1
-
-log_success "Stored: /${STACK_PREFIX}/coveo/org-id"
-
-# Store Coveo Answer Config ID in SSM
-log_info "Storing Coveo Answer Config ID in SSM..."
-if [ -n "$COVEO_ANSWER_CONFIG_ID" ] && [ "$COVEO_ANSWER_CONFIG_ID" != "NOT_CONFIGURED" ]; then
-    aws ssm put-parameter \
-        --name "/${STACK_PREFIX}/coveo/answer-config-id" \
-        --value "$COVEO_ANSWER_CONFIG_ID" \
-        --type "String" \
-        --overwrite \
-        --description "Coveo Answer API configuration ID" \
-        --region "$AWS_REGION" >/dev/null 2>&1
-    
-    log_success "Stored: /${STACK_PREFIX}/coveo/answer-config-id"
-else
-    log_warning "COVEO_ANSWER_CONFIG_ID is empty or not configured, skipping SSM parameter creation"
-fi
-
-# Store Coveo Search API Key in SSM Parameter Store as plain String (for MCP server)
-log_info "Storing Coveo Search API Key in SSM Parameter Store (String)..."
-aws ssm put-parameter \
-    --name "/${STACK_PREFIX}/coveo/search-api-key" \
-    --value "$COVEO_SEARCH_API_KEY" \
-    --type "String" \
-    --overwrite \
-    --region "$AWS_REGION" >/dev/null 2>&1
-
-log_success "Stored: /${STACK_PREFIX}/coveo/search-api-key (SSM String)"
-
-
-
-log_success "All SSM secrets and parameters seeded successfully!"
+log_info "SSM parameters were already created before CloudFormation deployment"
+log_success "All SSM secrets and parameters are ready!"
 echo ""
 
 # NOTE: AgentCore Runtime (MCP and Agent) deployment moved to separate steps

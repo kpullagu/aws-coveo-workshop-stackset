@@ -119,3 +119,7 @@ Thumbs.db
 *.backup
 backup/
 temp_lambda_layer/
+Instructor/
+Lab*/
+scripts/deploy-workshop-with-gaps.sh
+scripts/prepare-lab-gaps.sh

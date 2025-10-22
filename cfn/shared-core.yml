@@ -53,12 +53,8 @@ Resources:
   # Secrets Manager & SSM Parameters
   # ==========================================
   
-  CoveoApiKeySecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub '${StackPrefix}/coveo/search-api-key'
-      Description: Coveo Search API key for workshop
-      SecretString: 'PLACEHOLDER-UPDATE-WITH-REAL-KEY'
+  # Note: Coveo API key is now stored in SSM Parameter Store
+  # Created by the deployment scripts: /workshop/coveo/search-api-key
 
   # Note: SSM parameters are now created by the seed-ssm-secrets.sh script
   # This avoids CloudFormation issues with parameter creation and allows for easier updates
@@ -82,18 +78,13 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ReadSecrets
+        - PolicyName: ReadSSMParameters
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref CoveoApiKeySecret
-              - Effect: Allow
-                Action:
                   - ssm:GetParameter
-                  - ssm:GetParameters
                 Resource:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
 
@@ -112,14 +103,10 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ReadSecrets
+        - PolicyName: ReadSSMParameters
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref CoveoApiKeySecret
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
@@ -142,14 +129,10 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ReadSecrets
+        - PolicyName: ReadSSMParameters
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref CoveoApiKeySecret
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
@@ -172,14 +155,10 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ReadSecrets
+        - PolicyName: ReadSSMParameters
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref CoveoApiKeySecret
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
@@ -202,14 +181,10 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ReadSecrets
+        - PolicyName: ReadSSMParameters
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref CoveoApiKeySecret
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
@@ -232,14 +207,10 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ReadSecrets
+        - PolicyName: ReadSSMParameters
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref CoveoApiKeySecret
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
@@ -265,14 +236,10 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: ReadSecrets
+        - PolicyName: ReadSSMParameters
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref CoveoApiKeySecret
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
@@ -322,7 +289,7 @@ Resources:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
           COVEO_ORG_ID: !Ref CoveoOrgId
-          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_SEARCH_API_KEY: !Sub '{{resolve:ssm:/workshop/coveo/search-api-key}}'
           COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
           COVEO_SEARCH_HUB: 'aws-workshop'
           LOG_LEVEL: INFO
@@ -353,7 +320,7 @@ Resources:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
           COVEO_ORG_ID: !Ref CoveoOrgId
-          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_SEARCH_API_KEY: !Sub '{{resolve:ssm:/workshop/coveo/search-api-key}}'
           COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
           COVEO_SEARCH_HUB: 'aws-workshop'
           LOG_LEVEL: INFO
@@ -384,7 +351,7 @@ Resources:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
           COVEO_ORG_ID: !Ref CoveoOrgId
-          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_SEARCH_API_KEY: !Sub '{{resolve:ssm:/workshop/coveo/search-api-key}}'
           COVEO_ANSWER_CONFIG_ID: !Ref CoveoAnswerConfigId
           COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
           COVEO_SEARCH_HUB: 'aws-workshop'
@@ -416,7 +383,7 @@ Resources:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
           COVEO_ORG_ID: !Ref CoveoOrgId
-          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_SEARCH_API_KEY: !Sub '{{resolve:ssm:/workshop/coveo/search-api-key}}'
           COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
           COVEO_SEARCH_HUB: 'aws-workshop'
           COVEO_PIPELINE: 'aws-workshop-pipeline'
@@ -448,7 +415,7 @@ Resources:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
           COVEO_ORG_ID: !Ref CoveoOrgId
-          COVEO_SEARCH_API_KEY_SECRET: !Ref CoveoApiKeySecret
+          COVEO_SEARCH_API_KEY: !Sub '{{resolve:ssm:/workshop/coveo/search-api-key}}'
           COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
           LOG_LEVEL: INFO
       Code:
@@ -477,6 +444,10 @@ Resources:
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
+          COVEO_ORG_ID: !Ref CoveoOrgId
+          COVEO_SEARCH_API_KEY: !Sub '{{resolve:ssm:/workshop/coveo/search-api-key}}'
+          COVEO_PLATFORM_URL: 'https://platform.cloud.coveo.com'
+          COVEO_SEARCH_HUB: 'aws-workshop'
           LOG_LEVEL: INFO
       Code:
         S3Bucket: !Ref CfnTemplateBucket
@@ -549,10 +520,6 @@ Resources:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/agent-id'
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/agent-alias-id'
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/org-id'
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                Resource: !Ref CoveoApiKeySecret
 
   BedrockAgentChatFunction:
     Type: AWS::Lambda::Function
@@ -948,8 +915,7 @@ Outputs:
     Export:
       Name: !Sub '${StackPrefix}-AgentCoreRuntimeRoleArn'
   
-  CoveoApiKeySecretArn:
-    Description: Coveo API Key Secret ARN (for MCP server)
-    Value: !Ref CoveoApiKeySecret
-    Export:
-      Name: !Sub '${StackPrefix}-CoveoApiKeySecretArn'
+  # Note: Coveo API key is stored in SSM Parameter Store
+  # Path: /workshop/coveo/search-api-key
+  # All Lambda functions use COVEO_SEARCH_API_KEY environment variable
+  # CloudFormation resolves SSM parameters at deployment time using {{resolve:ssm:...}}

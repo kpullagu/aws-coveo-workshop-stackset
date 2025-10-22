@@ -348,6 +348,7 @@ function AuthenticatedApp() {
             backendMode={backendMode}
             onLoadMore={handleLoadMore}
             loadingMore={loadingMore}
+            loading={loading}
           />
         </ContentArea>
       </MainContent>
