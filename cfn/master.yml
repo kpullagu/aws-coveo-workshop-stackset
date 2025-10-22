@@ -56,7 +56,10 @@ Parameters:
       - 'false'
     Description: Whether to deploy Bedrock Agent stack (Lab 2)
 
-
+  LambdaLayerArn:
+    Type: String
+    Default: ''
+    Description: Lambda Layer ARN with shared dependencies (optional)
 
 Conditions:
   ShouldDeployBedrockAgent: !Equals [!Ref DeployBedrockAgent, 'true']
@@ -94,6 +97,7 @@ Resources:
         CognitoClientId: !GetAtt AuthStack.Outputs.UserPoolClientId
         CoveoOrgId: !Ref CoveoOrgId
         CoveoAnswerConfigId: !Ref CoveoAnswerConfigId
+        LambdaLayerArn: !Ref LambdaLayerArn
       Tags:
         - Key: Project
           Value: CoveoAWSWorkshop

@@ -39,8 +39,14 @@ Parameters:
     Default: ''
     Description: MCP server URL (optional, provided by AgentCore stack if deployed)
 
+  LambdaLayerArn:
+    Type: String
+    Default: ''
+    Description: Lambda Layer ARN with shared dependencies (optional, auto-created during deployment)
+
 Conditions:
   HasMcpServer: !Not [!Equals [!Ref McpServerUrl, '']]
+  HasLambdaLayer: !Not [!Equals [!Ref LambdaLayerArn, '']]
 
 Resources:
   # ==========================================
@@ -308,6 +314,10 @@ Resources:
       Role: !GetAtt SearchProxyRole.Arn
       Timeout: 30
       MemorySize: 512
+      Layers: !If
+        - HasLambdaLayer
+        - [!Ref LambdaLayerArn]
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
@@ -335,6 +345,10 @@ Resources:
       Role: !GetAtt PassagesProxyRole.Arn
       Timeout: 30
       MemorySize: 256
+      Layers: !If
+        - HasLambdaLayer
+        - [!Ref LambdaLayerArn]
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
@@ -362,6 +376,10 @@ Resources:
       Role: !GetAtt AnsweringProxyRole.Arn
       Timeout: 60
       MemorySize: 512
+      Layers: !If
+        - HasLambdaLayer
+        - [!Ref LambdaLayerArn]
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
@@ -390,6 +408,10 @@ Resources:
       Role: !GetAtt QuerySuggestProxyRole.Arn
       Timeout: 30
       MemorySize: 256
+      Layers: !If
+        - HasLambdaLayer
+        - [!Ref LambdaLayerArn]
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
@@ -418,6 +440,10 @@ Resources:
       Role: !GetAtt HtmlProxyRole.Arn
       Timeout: 30
       MemorySize: 256
+      Layers: !If
+        - HasLambdaLayer
+        - [!Ref LambdaLayerArn]
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
@@ -444,6 +470,10 @@ Resources:
       Role: !GetAtt PassageToolRole.Arn
       Timeout: 30
       MemorySize: 256
+      Layers: !If
+        - HasLambdaLayer
+        - [!Ref LambdaLayerArn]
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
@@ -467,6 +497,10 @@ Resources:
       Role: !GetAtt AgentCoreRuntimeRole.Arn
       Timeout: 300
       MemorySize: 512
+      Layers: !If
+        - HasLambdaLayer
+        - [!Ref LambdaLayerArn]
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
@@ -529,6 +563,10 @@ Resources:
       Role: !GetAtt BedrockAgentChatRole.Arn
       Timeout: 60
       MemorySize: 512
+      Layers: !If
+        - HasLambdaLayer
+        - [!Ref LambdaLayerArn]
+        - !Ref AWS::NoValue
       Environment:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
