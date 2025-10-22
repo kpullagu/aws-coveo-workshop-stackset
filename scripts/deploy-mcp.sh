@@ -4,7 +4,7 @@
 # Deploy MCP Server (Tool Provider)
 # =============================================================================
 # Creates AgentCore Runtime with Coveo API tools
-# CloudFormation stack uses CodeBuild to generate and build Docker image
+# Builds Docker image locally and pushes to ECR before CloudFormation deployment
 # =============================================================================
 
 set -e
@@ -24,8 +24,8 @@ echo -e "${BLUE}Deploying MCP Server (Tool Provider)${NC}"
 echo -e "${BLUE}==============================================================================${NC}"
 echo -e "${YELLOW}What this does:${NC}"
 echo -e "  → Creates AgentCore Runtime for MCP"
-echo -e "  → Embeds Coveo API tool definitions"
-echo -e "  → Uses CodeBuild to generate and build Docker image"
+echo -e "  → Builds Docker image locally with Coveo API tools"
+echo -e "  → Pushes image to ECR"
 echo -e "  → Deploys to serverless AgentCore Runtime"
 echo ""
 
@@ -44,7 +44,7 @@ if [ "$STACK_EXISTS" = "NOT_FOUND" ]; then
     echo "Checking for orphaned resources from previous deployments..."
     
     # 1. Check for orphaned ECR repository
-    ECR_REPO_NAME="${STACK_NAME}-mcp-server"
+    ECR_REPO_NAME="${STACK_NAME}"
     ECR_EXISTS=$(aws ecr describe-repositories \
         --repository-names "$ECR_REPO_NAME" \
         --region "$REGION" \
@@ -235,6 +235,90 @@ if [ "$STACK_EXISTS" = "NOT_FOUND" ]; then
     
     echo "✓ Orphaned resources cleanup complete"
     
+    # Create ECR repository if it doesn't exist
+    echo "Creating ECR repository if needed..."
+    ECR_REPO_NAME="${STACK_NAME}"
+    
+    if ! aws ecr describe-repositories --repository-names "$ECR_REPO_NAME" --region "$REGION" &> /dev/null; then
+        echo "Creating ECR repository: $ECR_REPO_NAME"
+        aws ecr create-repository \
+            --repository-name "$ECR_REPO_NAME" \
+            --region "$REGION" \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256 > /dev/null
+        echo "✓ ECR repository created: $ECR_REPO_NAME"
+    else
+        echo "✓ ECR repository already exists: $ECR_REPO_NAME"
+    fi
+    
+    # Check Docker availability
+    echo "Checking Docker availability..."
+    if ! docker info > /dev/null 2>&1; then
+        echo "❌ Docker is not running or not installed"
+        echo "   Please start Docker Desktop or install Docker Engine"
+        exit 1
+    fi
+    echo "✓ Docker is available"
+    
+    # Build Docker image locally
+    echo "Building Docker image locally..."
+    cd coveo-mcp-server
+    
+    # Generate timestamp for image tagging
+    IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
+    ECR_REPO_NAME="${STACK_NAME}"
+    
+    echo "Building image with tags: latest, $IMAGE_TAG"
+    if ! docker buildx build \
+        --platform linux/arm64 \
+        --load \
+        -t "$ECR_REPO_NAME:latest" \
+        -t "$ECR_REPO_NAME:$IMAGE_TAG" \
+        .; then
+        echo "❌ Docker build failed"
+        echo "   Check Dockerfile and source files in coveo-mcp-server/"
+        cd ..
+        exit 1
+    fi
+    
+    echo "✓ Docker image built successfully"
+    cd ..
+    
+    # Get ECR repository URI and authenticate
+    echo "Authenticating to ECR and pushing image..."
+    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    ECR_REPO_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO_NAME}"
+    
+    # Authenticate to ECR
+    if ! aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_REPO_URI" > /dev/null 2>&1; then
+        echo "❌ ECR authentication failed"
+        echo "   Check AWS credentials and ECR permissions"
+        exit 1
+    fi
+    echo "✓ ECR authentication successful"
+    
+    # Tag images for ECR
+    docker tag "$ECR_REPO_NAME:latest" "$ECR_REPO_URI:latest"
+    docker tag "$ECR_REPO_NAME:$IMAGE_TAG" "$ECR_REPO_URI:$IMAGE_TAG"
+    
+    # Push images to ECR
+    echo "Pushing images to ECR..."
+    if ! docker push "$ECR_REPO_URI:latest"; then
+        echo "❌ ECR push failed for latest tag"
+        echo "   Check ECR repository exists and permissions"
+        exit 1
+    fi
+    
+    if ! docker push "$ECR_REPO_URI:$IMAGE_TAG"; then
+        echo "❌ ECR push failed for timestamp tag"
+        echo "   Check ECR repository exists and permissions"
+        exit 1
+    fi
+    
+    echo "✓ Images pushed to ECR successfully"
+    echo "  → $ECR_REPO_URI:latest"
+    echo "  → $ECR_REPO_URI:$IMAGE_TAG"
+    
     # Get Cognito IDs from main stack
     echo "Getting Cognito configuration from main stack..."
     COGNITO_USER_POOL_ID=$(aws cloudformation describe-stacks \
@@ -258,26 +342,15 @@ if [ "$STACK_EXISTS" = "NOT_FOUND" ]; then
     echo "✓ Found Cognito User Pool ID: $COGNITO_USER_POOL_ID"
     echo "✓ Found Cognito Client ID: $COGNITO_CLIENT_ID"
     
-    # Get S3 bucket for templates
-    echo "Getting S3 bucket for CloudFormation templates..."
-    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    S3_BUCKET="${STACK_PREFIX}-${ACCOUNT_ID}-cfn-templates"
-    
-    # Upload template to S3 (template is too large for inline deployment)
-    echo "Uploading MCP template to S3..."
-    cd coveo-mcp-server
-    aws s3 cp mcp-server-template.yaml "s3://${S3_BUCKET}/mcp-server-template.yaml" --region "$REGION"
-    echo "✓ Template uploaded to s3://${S3_BUCKET}/mcp-server-template.yaml"
-    
-    # Create CloudFormation stack using S3 template URL
+    # Create CloudFormation stack using local template
     echo "Creating MCP CloudFormation stack..."
-    TEMPLATE_URL="https://${S3_BUCKET}.s3.${REGION}.amazonaws.com/mcp-server-template.yaml"
     
     aws cloudformation create-stack \
         --stack-name "$STACK_NAME" \
-        --template-url "$TEMPLATE_URL" \
+        --template-body file://coveo-mcp-server/mcp-server-template.yaml \
         --parameters \
             ParameterKey=StackPrefix,ParameterValue="$STACK_PREFIX" \
+            ParameterKey=ImageUri,ParameterValue="$ECR_REPO_URI:$IMAGE_TAG" \
             ParameterKey=CognitoUserPoolId,ParameterValue="$COGNITO_USER_POOL_ID" \
             ParameterKey=CognitoUserPoolClientId,ParameterValue="$COGNITO_CLIENT_ID" \
         --capabilities CAPABILITY_NAMED_IAM \
@@ -286,20 +359,17 @@ if [ "$STACK_EXISTS" = "NOT_FOUND" ]; then
     echo "✓ Stack creation initiated"
     
     # Wait for stack creation
-    echo "Waiting for stack creation to complete (this may take 10-15 minutes)..."
+    echo "Waiting for stack creation to complete (this may take 5-10 minutes)..."
     echo "CloudFormation will automatically:"
     echo "  • Create ECR repository"
-    echo "  • Generate MCP server code (inline in BuildSpec)"
-    echo "  • Build Docker image via CodeBuild"
-    echo "  • Push image to ECR"
-    echo "  • Deploy AgentCore Runtime"
+    echo "  • Deploy AgentCore Runtime with pre-built image"
+    echo "  • Configure SSM parameters"
     
     aws cloudformation wait stack-create-complete \
         --stack-name "$STACK_NAME" \
         --region "$REGION"
     
     echo "✓ Stack created successfully"
-    cd ..
 else
     echo "✓ Stack already exists"
     echo ""
@@ -330,22 +400,98 @@ else
     echo "✓ Found Cognito User Pool ID: $COGNITO_USER_POOL_ID"
     echo "✓ Found Cognito Client ID: $COGNITO_CLIENT_ID"
     
-    # Get S3 bucket and upload template
-    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    S3_BUCKET="${STACK_PREFIX}-${ACCOUNT_ID}-cfn-templates"
+    # Build and push updated image (same process as create)
+    # Create ECR repository if it doesn't exist
+    echo "Creating ECR repository if needed..."
+    ECR_REPO_NAME="${STACK_NAME}"
     
+    if ! aws ecr describe-repositories --repository-names "$ECR_REPO_NAME" --region "$REGION" &> /dev/null; then
+        echo "Creating ECR repository: $ECR_REPO_NAME"
+        aws ecr create-repository \
+            --repository-name "$ECR_REPO_NAME" \
+            --region "$REGION" \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256 > /dev/null
+        echo "✓ ECR repository created: $ECR_REPO_NAME"
+    else
+        echo "✓ ECR repository already exists: $ECR_REPO_NAME"
+    fi
+    
+    # Check Docker availability
+    echo "Checking Docker availability..."
+    if ! docker info > /dev/null 2>&1; then
+        echo "❌ Docker is not running or not installed"
+        echo "   Please start Docker Desktop or install Docker Engine"
+        exit 1
+    fi
+    echo "✓ Docker is available"
+    
+    # Build Docker image locally
+    echo "Building updated Docker image locally..."
     cd coveo-mcp-server
-    echo "Uploading updated template to S3..."
-    aws s3 cp mcp-server-template.yaml "s3://${S3_BUCKET}/mcp-server-template.yaml" --region "$REGION"
     
-    TEMPLATE_URL="https://${S3_BUCKET}.s3.${REGION}.amazonaws.com/mcp-server-template.yaml"
+    # Generate timestamp for image tagging
+    IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
+    ECR_REPO_NAME="${STACK_NAME}"
+    
+    echo "Building image with tags: latest, $IMAGE_TAG"
+    if ! docker buildx build \
+        --platform linux/arm64 \
+        --load \
+        -t "$ECR_REPO_NAME:latest" \
+        -t "$ECR_REPO_NAME:$IMAGE_TAG" \
+        .; then
+        echo "❌ Docker build failed"
+        echo "   Check Dockerfile and source files in coveo-mcp-server/"
+        cd ..
+        exit 1
+    fi
+    
+    echo "✓ Docker image built successfully"
+    cd ..
+    
+    # Get ECR repository URI and authenticate
+    echo "Authenticating to ECR and pushing updated image..."
+    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    ECR_REPO_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO_NAME}"
+    
+    # Authenticate to ECR
+    if ! aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$ECR_REPO_URI" > /dev/null 2>&1; then
+        echo "❌ ECR authentication failed"
+        echo "   Check AWS credentials and ECR permissions"
+        exit 1
+    fi
+    echo "✓ ECR authentication successful"
+    
+    # Tag images for ECR
+    docker tag "$ECR_REPO_NAME:latest" "$ECR_REPO_URI:latest"
+    docker tag "$ECR_REPO_NAME:$IMAGE_TAG" "$ECR_REPO_URI:$IMAGE_TAG"
+    
+    # Push images to ECR
+    echo "Pushing updated images to ECR..."
+    if ! docker push "$ECR_REPO_URI:latest"; then
+        echo "❌ ECR push failed for latest tag"
+        echo "   Check ECR repository exists and permissions"
+        exit 1
+    fi
+    
+    if ! docker push "$ECR_REPO_URI:$IMAGE_TAG"; then
+        echo "❌ ECR push failed for timestamp tag"
+        echo "   Check ECR repository exists and permissions"
+        exit 1
+    fi
+    
+    echo "✓ Updated images pushed to ECR successfully"
+    echo "  → $ECR_REPO_URI:latest"
+    echo "  → $ECR_REPO_URI:$IMAGE_TAG"
     
     echo "Updating CloudFormation stack..."
     aws cloudformation update-stack \
         --stack-name "$STACK_NAME" \
-        --template-url "$TEMPLATE_URL" \
+        --template-body file://coveo-mcp-server/mcp-server-template.yaml \
         --parameters \
             ParameterKey=StackPrefix,ParameterValue="$STACK_PREFIX" \
+            ParameterKey=ImageUri,ParameterValue="$ECR_REPO_URI:$IMAGE_TAG" \
             ParameterKey=CognitoUserPoolId,ParameterValue="$COGNITO_USER_POOL_ID" \
             ParameterKey=CognitoUserPoolClientId,ParameterValue="$COGNITO_CLIENT_ID" \
         --capabilities CAPABILITY_NAMED_IAM \
@@ -358,7 +504,6 @@ else
         --region "$REGION"
     
     echo "✓ Stack updated successfully"
-    cd ..
 fi
 
 # Get MCP runtime ARN from CloudFormation outputs

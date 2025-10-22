@@ -148,6 +148,7 @@ REQUIRED_FILES=(
     "scripts/deploy-mcp.sh"
     "scripts/deploy-agent.sh"
     "scripts/deploy-ui-apprunner.sh"
+    "scripts/configure-cognito.sh"
     "frontend/Dockerfile"
     "frontend/server.js"
 )

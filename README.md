@@ -168,10 +168,10 @@ Workshop-Full/
 │   ├── deploy-mcp.sh                # MCP server deployment
 │   ├── deploy-agent.sh              # AgentCore agent deployment
 │   ├── deploy-ui-apprunner.sh       # UI to App Runner
+│   ├── configure-cognito.sh         # Cognito authentication setup
 │   ├── validate-before-deploy.sh    # Prerequisites check
 │   ├── package-lambdas.sh           # Lambda packaging
 │   ├── seed-ssm-secrets.sh          # SSM parameter seeding
-│   ├── update-cognito-callbacks.sh  # Cognito callback URLs
 │   ├── show-deployment-info.sh      # Display deployment info
 │   └── destroy.sh                   # Complete cleanup
 │
@@ -219,17 +219,38 @@ bash scripts/validate-before-deploy.sh
 # 2. Deploy complete workshop (recommended)
 bash scripts/deploy-complete-workshop.sh
 
-# OR deploy core infrastructure only
+# OR deploy components individually:
+
+# 2a. Deploy core infrastructure
 ./scripts/deploy-main-infra.sh --region us-east-1
 
-# 3. Seed configuration
-./scripts/seed-ssm-secrets.sh --region us-east-1
+# 2b. Deploy MCP server
+./scripts/deploy-mcp.sh
 
-# 4. Deploy UI (optional)
+# 2c. Deploy Agent runtime
+./scripts/deploy-agent.sh
+
+# 2d. Deploy UI
 ./scripts/deploy-ui-apprunner.sh --region us-east-1
+
+# 2e. Configure Cognito authentication
+./scripts/configure-cognito.sh --region us-east-1
 ```
 
-### Option 3: Development Mode
+### Option 3: Cognito Configuration Only
+
+If you need to update Cognito settings after deployment:
+
+```bash
+# Configure Cognito callback URLs and test user
+bash scripts/configure-cognito.sh
+
+# With custom test user credentials
+TEST_USER_EMAIL="myuser@example.com" TEST_USER_PASSWORD="MyPassword123!" \
+bash scripts/configure-cognito.sh
+```
+
+### Option 4: Development Mode
 
 ```bash
 # Deploy infrastructure only

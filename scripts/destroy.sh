@@ -541,7 +541,6 @@ LAMBDA_FUNCTIONS=(
     "${STACK_PREFIX}-passage-tool"
     "${STACK_PREFIX}-agentcore-runtime"
     "${STACK_PREFIX}-bedrock-agent-chat"
-    "${STACK_PREFIX}-mcp-server-codebuild-trigger"
     "${STACK_PREFIX}-coveo-agent-codebuild-trigger"
 )
 
@@ -563,7 +562,6 @@ echo ""
 echo -e "${YELLOW}[4/12] Cleaning up CodeBuild projects...${NC}"
 
 CODEBUILD_PROJECTS=(
-    "${STACK_PREFIX}-mcp-server-mcp-server-build"
     "${STACK_PREFIX}-coveo-agent-coveo-agent-build"
 )
 
@@ -584,6 +582,8 @@ for project in "${CODEBUILD_PROJECTS[@]}"; do
         echo "No CodeBuild project found: $project"
     fi
 done
+
+echo "Note: MCP server CodeBuild project no longer created (using local Docker build)"
 
 echo ""
 
@@ -612,10 +612,8 @@ IAM_ROLES=(
     "${STACK_PREFIX}-apprunner-instance-role"
     "${STACK_PREFIX}-apprunner-access-role"
     "${STACK_PREFIX}-ssm-parameter-handler-role"
-    "${STACK_PREFIX}-mcp-server-codebuild-role"
     "${STACK_PREFIX}-mcp-server-runtime-role"
     "${STACK_PREFIX}-mcp-server-agent-execution-role"
-    "${STACK_PREFIX}-mcp-server-custom-resource-role"
     "${STACK_PREFIX}-coveo-agent-codebuild-role"
     "${STACK_PREFIX}-coveo-agent-runtime-role"
     "${STACK_PREFIX}-coveo-agent-agent-execution-role"
@@ -686,7 +684,6 @@ echo -e "${YELLOW}[8/14] Deleting CloudFormation stacks...${NC}"
 ALL_STACKS=(
     "${STACK_PREFIX}-coveo-agent"
     "${STACK_PREFIX}-mcp-server"
-    "${STACK_PREFIX}-mcp-codebuild"
     "${STACK_PREFIX}-ui-apprunner"
     "${STACK_PREFIX}-master-BedrockAgentStack"
     "${STACK_PREFIX}-master-CoreStack"
@@ -1159,14 +1156,14 @@ echo ""
 # Step 12: Delete CloudWatch Log Groups (in parallel)
 echo -e "${YELLOW}[12/14] Deleting CloudWatch Log Groups...${NC}"
 
-# Get all log groups with the stack prefix (including AppRunner, CodeBuild, MCP runtime, and ECS)
+# Get all log groups with the stack prefix (including AppRunner, CodeBuild for coveo-agent, MCP runtime, and ECS)
 # AppRunner creates: /aws/apprunner/workshop-ui/application, /aws/apprunner/workshop-ui/service
-# CodeBuild creates: /aws/codebuild/workshop-mcp-server-mcp-server-build
+# CodeBuild creates: /aws/codebuild/workshop-coveo-agent-coveo-agent-build (coveo-agent only)
 # MCP runtime creates: /aws/bedrock-agentcore/runtimes/workshop_coveo_mcp_server_runtime
 # ECS creates: /aws/ecs/containerinsights/workshop-mcp-cluster/performance
 LOG_GROUPS=$(aws logs describe-log-groups \
     --region "$AWS_REGION" \
-    --query "logGroups[?starts_with(logGroupName, '/aws/lambda/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/apigateway/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/apprunner/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/codebuild/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/bedrock/agentcore/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/bedrock-agentcore/runtimes/${STACK_PREFIX}_') || starts_with(logGroupName, '/aws/ecs/containerinsights/${STACK_PREFIX}-')].logGroupName" \
+    --query "logGroups[?starts_with(logGroupName, '/aws/lambda/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/apigateway/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/apprunner/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/codebuild/${STACK_PREFIX}-coveo-agent-') || starts_with(logGroupName, '/aws/bedrock/agentcore/${STACK_PREFIX}-') || starts_with(logGroupName, '/aws/bedrock-agentcore/runtimes/${STACK_PREFIX}_') || starts_with(logGroupName, '/aws/ecs/containerinsights/${STACK_PREFIX}-')].logGroupName" \
     --output text 2>/dev/null || echo "")
 
 if [ -n "$LOG_GROUPS" ]; then
@@ -1316,6 +1313,7 @@ DEPLOYMENT_FILES=(
     "$PROJECT_ROOT/complete-deployment-info.txt"
     "$PROJECT_ROOT/ui-deployment-info.txt"
     "$PROJECT_ROOT/deployment-summary.txt"
+    "$PROJECT_ROOT/cognito-config.txt"
 )
 
 for file in "${DEPLOYMENT_FILES[@]}"; do
