@@ -100,12 +100,28 @@ LOGOUT_URLS_STR="${LOGOUT_URLS[@]}"
 echo "Callback URLs to set: $CALLBACK_URLS_STR"
 echo "Logout URLs to set: $LOGOUT_URLS_STR"
 
-# Update the User Pool Client
+# Update the User Pool Client with complete OAuth configuration
+# IMPORTANT: Must specify ALL parameters to avoid resetting OAuth settings to defaults
+echo "Updating Cognito User Pool Client with OAuth configuration..."
 aws cognito-idp update-user-pool-client \
     --user-pool-id "$USER_POOL_ID" \
     --client-id "$CLIENT_ID" \
     --callback-urls $CALLBACK_URLS_STR \
     --logout-urls $LOGOUT_URLS_STR \
+    --allowed-o-auth-flows "code" \
+    --allowed-o-auth-scopes "email" "openid" "profile" \
+    --allowed-o-auth-flows-user-pool-client \
+    --supported-identity-providers "COGNITO" \
+    --explicit-auth-flows "ALLOW_USER_PASSWORD_AUTH" "ALLOW_REFRESH_TOKEN_AUTH" "ALLOW_USER_SRP_AUTH" \
     --region "$AWS_REGION"
 
-echo -e "${GREEN}✓ Cognito callback URLs updated${NC}"
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ Cognito callback URLs and OAuth configuration updated${NC}"
+    echo "  - OAuth flows enabled: code"
+    echo "  - OAuth scopes: email, openid, profile"
+    echo "  - AllowedOAuthFlowsUserPoolClient: true"
+else
+    echo -e "${YELLOW}⚠️  Warning: Cognito update may have failed${NC}"
+    echo "  You may need to manually enable OAuth in the Cognito console"
+    exit 1
+fi

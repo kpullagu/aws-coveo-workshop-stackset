@@ -198,6 +198,17 @@ log_info "Packaging Lambda Functions"
 log_info "=========================================="
 log_info "Creating deployment packages for all Lambda functions..."
 
+# Create/Update Lambda Layer with shared dependencies
+log_info "Creating Lambda Layer with shared dependencies..."
+if [ -f "scripts/create-lambda-layer.sh" ]; then
+    bash scripts/create-lambda-layer.sh "$AWS_REGION"
+    if [ $? -ne 0 ]; then
+        log_warning "Lambda Layer creation failed, will use full packaging"
+    else
+        log_success "Lambda Layer created"
+    fi
+fi
+
 # Check which packaging script is available
 if [ -f "scripts/package-lambdas.sh" ]; then
     log_info "Running automated Lambda packaging script..."
@@ -297,6 +308,21 @@ log_info "=========================================="
 log_info "Creating/updating master stack with nested stacks..."
 log_info "This includes: Auth (Cognito), Core (API Gateway, Lambda), Bedrock Agent"
 
+# Get Lambda Layer ARN if it exists
+LAMBDA_LAYER_ARN=$(aws ssm get-parameter \
+    --name "/${STACK_PREFIX}/lambda-layer-arn" \
+    --query "Parameter.Value" \
+    --output text \
+    --region "$AWS_REGION" 2>/dev/null || echo "")
+
+if [ -n "$LAMBDA_LAYER_ARN" ]; then
+    log_info "Using Lambda Layer: $LAMBDA_LAYER_ARN"
+    LAYER_PARAM="LambdaLayerArn=$LAMBDA_LAYER_ARN"
+else
+    log_info "No Lambda Layer found, Lambdas will include dependencies"
+    LAYER_PARAM="LambdaLayerArn="
+fi
+
 aws cloudformation deploy \
     --template-file cfn/master.yml \
     --stack-name "${STACK_PREFIX}-master" \
@@ -309,6 +335,7 @@ aws cloudformation deploy \
         CoveoAnswerConfigId="$COVEO_ANSWER_CONFIG_ID" \
         DeployBedrockAgent="$DEPLOY_BEDROCK" \
         Environment="workshop" \
+        $LAYER_PARAM \
     --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM \
     --region "$AWS_REGION" \
     --no-fail-on-empty-changeset
