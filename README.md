@@ -7,7 +7,7 @@
 [![Bedrock](https://img.shields.io/badge/AWS-Bedrock-purple)](https://aws.amazon.com/bedrock/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A production-ready workshop demonstrating AI-powered search and answering using Coveo's platform integrated with AWS serverless services, featuring multiple backend architectures including Bedrock AgentCore Runtime and MCP Server integration.
+A builder workshop demonstrating AI-powered search and answering using Coveo's platform integrated with AWS serverless services, featuring multiple backend architectures including Bedrock AgentCore Runtime and MCP Server integration.
 
 ## 🎯 Workshop Overview
 
