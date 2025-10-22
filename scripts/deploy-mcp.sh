@@ -307,6 +307,29 @@ else
     echo "  1. Edit the inline code in coveo-mcp-server/mcp-server-template.yaml"
     echo "  2. Upload template to S3 and update the stack:"
     
+    # Get Cognito IDs from main stack (needed for update)
+    echo "Getting Cognito configuration from main stack..."
+    COGNITO_USER_POOL_ID=$(aws cloudformation describe-stacks \
+        --stack-name "${STACK_PREFIX}-master" \
+        --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' \
+        --output text \
+        --region "$REGION" 2>/dev/null || echo "")
+    
+    COGNITO_CLIENT_ID=$(aws cloudformation describe-stacks \
+        --stack-name "${STACK_PREFIX}-master" \
+        --query 'Stacks[0].Outputs[?OutputKey==`UserPoolClientId`].OutputValue' \
+        --output text \
+        --region "$REGION" 2>/dev/null || echo "")
+    
+    if [ -z "$COGNITO_USER_POOL_ID" ] || [ -z "$COGNITO_CLIENT_ID" ]; then
+        echo "❌ Could not find Cognito configuration from main stack"
+        echo "   Make sure ${STACK_PREFIX}-master stack is deployed first"
+        exit 1
+    fi
+    
+    echo "✓ Found Cognito User Pool ID: $COGNITO_USER_POOL_ID"
+    echo "✓ Found Cognito Client ID: $COGNITO_CLIENT_ID"
+    
     # Get S3 bucket and upload template
     ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
     S3_BUCKET="${STACK_PREFIX}-${ACCOUNT_ID}-cfn-templates"
@@ -321,6 +344,10 @@ else
     aws cloudformation update-stack \
         --stack-name "$STACK_NAME" \
         --template-url "$TEMPLATE_URL" \
+        --parameters \
+            ParameterKey=StackPrefix,ParameterValue="$STACK_PREFIX" \
+            ParameterKey=CognitoUserPoolId,ParameterValue="$COGNITO_USER_POOL_ID" \
+            ParameterKey=CognitoUserPoolClientId,ParameterValue="$COGNITO_CLIENT_ID" \
         --capabilities CAPABILITY_NAMED_IAM \
         --region "$REGION"
     
