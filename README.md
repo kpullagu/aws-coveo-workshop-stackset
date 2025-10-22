@@ -25,20 +25,20 @@ This workshop demonstrates a production-ready, scalable search and AI answering 
 ### High-Level Architecture
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                         React UI (App Runner)                     │
+│                         React UI (App Runner)                    │
 │  • Cognito Authentication  • Search Interface  • Facet Filters   │
 │  • Backend Mode Selector   • Real-time Results • Scrollable UI   │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
                              ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                    Express BFF (Backend for Frontend)             │
+│                    Express BFF (Backend for Frontend)            │
 │  • Routes API calls  • JWT validation  • Response transformation │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
                              ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                         API Gateway + Lambda                      │
+│                         API Gateway + Lambda                     │
 │  • search-proxy  • passages-proxy  • answering-proxy             │
 │  • bedrock-agent-chat  • agentcore-runtime  • query-suggest      │
 └─────────┬────────────────────────┬────────────────────┬──────────┘
