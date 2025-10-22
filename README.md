@@ -180,8 +180,6 @@ Workshop-Full/
 │   └── env.schema.json              # Environment schema
 │
 ├── 📁 docs/                         # Documentation
-│   ├── INSTRUCTOR_GUIDE.md          # Workshop instructor guide
-│   ├── PROJECT_STRUCTURE_ESSENTIAL_FILES.md
 │   └── [other documentation files]
 │
 ├── 📁 archive/                      # Archived/old files
