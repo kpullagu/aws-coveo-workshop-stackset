@@ -60,6 +60,27 @@ The workshop supports three production-ready backend architectures:
 2. **BedrockAgent Mode** - AgentCore Runtime with Bedrock orchestration (multi-turn, streaming)
 3. **CoveoMCP Mode** - MCP Server with AgentCore Gateway (tool-based, extensible)
 
+### MCP Server Architecture
+
+The MCP (Model Context Protocol) Server provides a tool-based architecture for AI agents:
+
+**Deployment Approach:**
+- **Local Docker Build** - Images built locally and pushed to ECR for fast iteration
+- **AgentCore Runtime** - Serverless deployment with automatic scaling
+- **Tool Integration** - Coveo API tools accessible via MCP protocol
+
+**Key Components:**
+- `app.py` - Main MCP server application with tool definitions
+- `coveo_tools.py` - Coveo API tool implementations (search, passages, answering)
+- `Dockerfile` - Container image for AgentCore Runtime deployment
+- `mcp-server-template.yaml` - CloudFormation template for AWS resources
+
+**Benefits:**
+- **Extensible** - Easy to add new tools and capabilities
+- **Standardized** - Uses MCP protocol for tool communication
+- **Scalable** - Serverless deployment with AgentCore Runtime
+- **Fast Development** - Local Docker builds for rapid iteration
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -114,7 +135,6 @@ Workshop-Full/
 │   ├── auth-cognito.yml             # Cognito User Pool & authentication
 │   ├── bedrock-agent.yml            # Bedrock Agent configuration
 │   ├── agentcore-runtime.yml        # AgentCore Runtime deployment
-│   ├── codebuild-mcp-builder.yml    # CodeBuild for MCP server
 │   └── ui-apprunner.yml             # App Runner UI deployment
 │
 ├── 📁 frontend/                     # React UI + Express BFF
@@ -158,9 +178,12 @@ Workshop-Full/
 │   ├── requirements.txt             # Python dependencies
 │   └── Dockerfile                   # Agent container image
 │
-├── 📁 coveo-mcp-server/             # MCP Server Configuration
-│   ├── mcp-server-template.yaml     # MCP server deployment config
-│   └── requirements.txt             # Python dependencies
+├── 📁 coveo-mcp-server/             # MCP Server Application
+│   ├── app.py                       # Main MCP server application
+│   ├── coveo_tools.py               # Coveo API tool implementations
+│   ├── mcp-server-template.yaml     # CloudFormation deployment config
+│   ├── requirements.txt             # Python dependencies
+│   └── Dockerfile                   # MCP server container image
 │
 ├── 📁 scripts/                      # Deployment Scripts
 │   ├── deploy-complete-workshop.sh  # ⭐ One-click complete deployment
@@ -205,10 +228,11 @@ Workshop-Full/
 - ✅ AWS infrastructure (CloudFormation)
 - ✅ Lambda functions and API Gateway
 - ✅ Cognito authentication
-- ✅ Bedrock Agent integration
+- ✅ MCP Server (local Docker build → ECR → AgentCore Runtime)
+- ✅ Agent Runtime (orchestrator for MCP tools)
 - ✅ UI deployment to App Runner
-- ✅ Test user creation
-- ✅ Complete configuration
+- ✅ Test user creation and Cognito configuration
+- ✅ Complete end-to-end setup
 
 ### Option 2: Step-by-Step Deployment
 
@@ -260,6 +284,24 @@ bash scripts/configure-cognito.sh
 cd frontend
 npm install
 npm start
+```
+
+### MCP Server Development
+
+For MCP server development and testing:
+
+```bash
+# Deploy MCP server with local changes
+./scripts/deploy-mcp.sh
+
+# The script will:
+# 1. Build Docker image locally from coveo-mcp-server/
+# 2. Push to ECR repository
+# 3. Deploy to AgentCore Runtime
+# 4. Update CloudFormation stack
+
+# Test MCP server deployment
+./scripts/deploy-agent.sh  # Deploy agent that uses MCP server
 ```
 
 ## 🧪 Testing the Workshop
@@ -477,9 +519,9 @@ aws apigateway get-rest-apis --query "items[?name=='coveo-workshop-api']"
 - ✅ API Gateway and routes
 - ✅ Cognito User Pool and users
 - ✅ IAM roles and policies
-- ✅ Secrets Manager secrets
 - ✅ SSM parameters
 - ✅ App Runner services
+- ✅ AgentCore Runtimes (MCP Server + Agent)
 - ✅ ECR repositories and images
 - ✅ Local build artifacts
 
