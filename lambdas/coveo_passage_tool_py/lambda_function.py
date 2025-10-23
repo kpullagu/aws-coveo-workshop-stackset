@@ -1,8 +1,18 @@
 """
-Bedrock Agent Lambda Tool for Coveo Passage Retrieval (Function Details format).
+Bedrock Agent Lambda Tool for Coveo Passage Retrieval.
 
 This Lambda function is designed to be used as a Bedrock Agent action group tool.
-It retrieves relevant passages from Coveo to ground the Agent's responses.
+It retrieves relevant passages from the Finance & Travel Knowledge Hub to ground the Agent's responses.
+
+Knowledge Base Content:
+    - Investor.gov: Investment basics, alerts, financial tools, and glossary
+    - Consumer Financial Protection Bureau (CFPB): Consumer finance topics and regulations
+    - FDIC: Banking protection and consumer resources
+    - CDC Travel: Country health information and travel guides
+    - State Department: Travel advisories and country information
+    - TSA: Travel security and prohibited items
+    - FAA: Aviation and traveler information
+    - UK Government: Financial services and travel advice
 
 Event Format (Bedrock Agent Function Details):
     {
@@ -18,7 +28,7 @@ Event Format (Bedrock Agent Function Details):
         "actionGroup": "...",
         "function": "retrieve_passages",
         "parameters": [
-            {"name": "query", "type": "string", "value": "How to care for teak?"},
+            {"name": "query", "type": "string", "value": "What is a 401k retirement account?"},
             {"name": "k", "type": "number", "value": "5"}
         ]
     }
@@ -38,20 +48,27 @@ Response Format (Bedrock Agent Function Details):
             }
         }
     }
+
+Environment Variables (Required):
+    - COVEO_ORG_ID: Coveo organization identifier
+    - COVEO_SEARCH_API_KEY: Coveo API key
+
+Environment Variables (Optional):
+    - COVEO_PLATFORM_URL: Coveo Platform API base URL (default: https://platform.cloud.coveo.com)
+    - COVEO_SEARCH_HUB: Search Hub identifier (default: aws-workshop)
+    - LOG_LEVEL: Logging level (default: INFO)
 """
 
 import json
 import logging
 import os
-import sys
 from urllib import request, error
 from typing import Dict, Any, List
 
-# Add config directory to path
-sys.path.insert(0, '/opt/python')
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
 
-import boto3
 
 def get_coveo_config():
     """Get Coveo configuration from environment variables."""
@@ -75,10 +92,6 @@ def get_coveo_config():
         logger.error(f"Missing required environment variable: {e}")
         logger.error("Required: COVEO_ORG_ID, COVEO_SEARCH_API_KEY")
         raise
-
-# Configure logging
-logger = logging.getLogger()
-logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -205,10 +218,10 @@ def retrieve_passages(query: str, k: int, config: Dict[str, str]) -> List[Dict[s
     platform_url = config['platform_url']
     search_hub = config['search_hub']
     
-    # Build Passage Retrieval API URL - Use correct v3 endpoint
+    # Build Passage Retrieval API URL
     url = f"{platform_url}/rest/search/v3/passages/retrieve"
     
-    # Prepare request payload - Use correct format matching passages_proxy
+    # Prepare request payload
     payload = {
         'query': query,
         'numberOfPassages': k,
@@ -219,7 +232,7 @@ def retrieve_passages(query: str, k: int, config: Dict[str, str]) -> List[Dict[s
             'locale': 'en-US',
             'fallbackLocale': 'en'
         },
-        'additionalFields': ["title", "clickableuri", "project", "uniqueid", "summary"],
+        'additionalFields': ['title', 'clickableuri', 'project', 'uniqueid', 'summary'],
         'facets': [],
         'queryCorrection': {
             'enabled': True,
@@ -259,16 +272,16 @@ def retrieve_passages(query: str, k: int, config: Dict[str, str]) -> List[Dict[s
             body = response.read().decode('utf-8')
             data = json.loads(body)
             
-            logger.info(f"📄 Full Coveo API response: {json.dumps(data, indent=2)}")
+            logger.debug(f"Coveo API response: {json.dumps(data, indent=2)}")
             
-            # Normalize response for Bedrock Agent - Handle v3 API response format
+            # Normalize response for Bedrock Agent
             # v3 API returns 'items' instead of 'passages'
             raw_passages = data.get('items', data.get('passages', []))
-            logger.info(f"📊 Found {len(raw_passages)} raw passages in response")
+            logger.info(f"Found {len(raw_passages)} passages in response")
             
             passages = []
             for i, passage in enumerate(raw_passages):
-                logger.info(f"📄 Processing passage {i+1}: {list(passage.keys())}")
+                logger.debug(f"Processing passage {i+1}: {list(passage.keys())}")
                 document = passage.get('document', {})
                 passages.append({
                     'text': passage.get('text', passage.get('content', passage.get('body', ''))),
@@ -279,7 +292,7 @@ def retrieve_passages(query: str, k: int, config: Dict[str, str]) -> List[Dict[s
                     'uniqueid': document.get('uniqueid', passage.get('uniqueid', ''))
                 })
             
-            logger.info(f"✅ Processed {len(passages)} passages for Bedrock Agent")
+            logger.info(f"Processed {len(passages)} passages for Bedrock Agent")
             
             return passages
     
@@ -295,7 +308,7 @@ def retrieve_passages(query: str, k: int, config: Dict[str, str]) -> List[Dict[s
 
 # For local testing
 if __name__ == '__main__':
-    # Mock Bedrock Agent event
+    # Mock Bedrock Agent event with Finance & Travel knowledge base query
     test_event = {
         'messageVersion': '1.0',
         'agent': {
@@ -304,16 +317,17 @@ if __name__ == '__main__':
             'alias': 'TSTALIASID',
             'version': 'DRAFT'
         },
-        'inputText': 'How do I clean my teak furniture?',
+        'inputText': 'What is a 401k retirement account?',
         'sessionId': 'test-session-123',
         'actionGroup': 'CoveoPassageRetrieval',
         'function': 'retrieve_passages',
         'parameters': [
-            {'name': 'query', 'type': 'string', 'value': 'How to clean teak furniture'},
+            {'name': 'query', 'type': 'string', 'value': 'What is a 401k retirement account?'},
             {'name': 'k', 'type': 'number', 'value': '5'}
         ]
     }
     
+    # Set environment variables for testing
     os.environ.setdefault('COVEO_ORG_ID', 'test-org')
     os.environ.setdefault('COVEO_SEARCH_API_KEY', 'xx00000000-0000-0000-0000-000000000000')
     os.environ.setdefault('LOG_LEVEL', 'DEBUG')
