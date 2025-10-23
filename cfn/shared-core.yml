@@ -60,6 +60,15 @@ Resources:
   # This avoids CloudFormation issues with parameter creation and allows for easier updates
 
   # ==========================================
+  # CloudWatch Log Group & IAM Role for Bedrock Model Invocations
+  # ==========================================
+  # Note: Both the log group and IAM role for Bedrock logging are created
+  # by the deployment script (deploy-main-infra.sh) rather than CloudFormation.
+  # This avoids permission issues and "already exists" errors on stack updates.
+  # The role name is: BedrockModelInvocationLoggingRole
+  # The log group is: /aws/bedrock/modelinvocations
+
+  # ==========================================
   # IAM Roles for Lambda Functions
   # ==========================================
 
@@ -520,6 +529,7 @@ Resources:
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/agent-id'
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/agent-alias-id'
                   - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/org-id'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/coveo/search-api-key'
 
   BedrockAgentChatFunction:
     Type: AWS::Lambda::Function

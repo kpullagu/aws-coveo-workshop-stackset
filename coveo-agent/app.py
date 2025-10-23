@@ -184,7 +184,7 @@ def get_ssm_parameter(name, default=None):
 
 # Read configuration from SSM
 REGION = get_ssm_parameter(f'/{STACK_PREFIX}/aws-region', default="us-east-1")
-MODEL_ID = get_ssm_parameter(f'/{STACK_PREFIX}/coveo/bedrock-model-id', default="us.anthropic.claude-3-7-sonnet-20250219-v1:0")
+MODEL_ID = get_ssm_parameter(f'/{STACK_PREFIX}/coveo/bedrock-model-id', default="us.amazon.nova-lite-v1:0")
 MCP_RUNTIME_ARN = get_ssm_parameter(f'/{STACK_PREFIX}/coveo/mcp-runtime-arn')
 MCP_URL = get_ssm_parameter(f'/{STACK_PREFIX}/coveo/mcp-url', default=None)
 

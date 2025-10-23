@@ -128,6 +128,13 @@ print_status "Main infrastructure deployed successfully" "SUCCESS"
 echo ""
 
 # =============================================================================
+# Bedrock Model Invocation Logging
+# =============================================================================
+# Note: Bedrock logging is now configured as part of deploy-main-infra.sh
+# No separate step needed here
+echo ""
+
+# =============================================================================
 # Deploy MCP Server (Tool Provider)
 # =============================================================================
 echo -e "${BLUE}==============================================================================${NC}"

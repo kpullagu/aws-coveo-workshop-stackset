@@ -369,6 +369,10 @@ log_success "Stored: /${STACK_PREFIX}/coveo/search-api-key (SSM String)"
 log_success "All SSM parameters created successfully!"
 echo ""
 
+# Enable Bedrock Model Invocation Logging (after CloudFormation creates the role)
+log_info "Note: Bedrock logging will be enabled after CloudFormation deployment completes"
+echo ""
+
 aws cloudformation deploy \
     --template-file cfn/master.yml \
     --stack-name "${STACK_PREFIX}-master" \
@@ -412,6 +416,158 @@ fi
 
 log_success "CloudFormation stack deployed successfully!"
 echo ""
+
+# Enable Bedrock Model Invocation Logging
+echo ""
+log_info "=========================================="
+log_info "Enabling Bedrock Model Invocation Logging"
+log_info "=========================================="
+
+ROLE_NAME="workshop-bedrock-logging-role"
+ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${ROLE_NAME}"
+LOG_GROUP_NAME="/aws/bedrock/modelinvocations"
+
+# Create log group if it doesn't exist
+log_info "Ensuring CloudWatch log group exists..."
+aws logs create-log-group \
+    --log-group-name "$LOG_GROUP_NAME" \
+    --region "$AWS_REGION" 2>/dev/null || log_info "Log group already exists"
+
+# Set retention policy
+aws logs put-retention-policy \
+    --log-group-name "$LOG_GROUP_NAME" \
+    --retention-in-days 7 \
+    --region "$AWS_REGION" 2>/dev/null || true
+
+# Check if IAM role exists, create if it doesn't
+log_info "Checking for Bedrock logging IAM role..."
+if aws iam get-role --role-name "$ROLE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+    log_success "IAM role already exists: $ROLE_NAME"
+else
+    log_info "Creating IAM role for Bedrock logging..."
+    
+    # Create trust policy
+    cat > /tmp/bedrock-trust-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "bedrock.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "$AWS_ACCOUNT_ID"
+        },
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:bedrock:${AWS_REGION}:${AWS_ACCOUNT_ID}:*"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+    # Create role
+    if aws iam create-role \
+        --role-name "$ROLE_NAME" \
+        --assume-role-policy-document file:///tmp/bedrock-trust-policy.json \
+        --description "Role for Bedrock model invocation logging to CloudWatch" \
+        --region "$AWS_REGION" 2>/dev/null; then
+        
+        log_success "Created IAM role: $ROLE_NAME"
+        
+        # Create and attach inline policy
+        cat > /tmp/bedrock-logging-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:${LOG_GROUP_NAME}:*"
+    }
+  ]
+}
+EOF
+        
+        aws iam put-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "BedrockLoggingPolicy" \
+            --policy-document file:///tmp/bedrock-logging-policy.json \
+            --region "$AWS_REGION" 2>/dev/null
+        
+        log_success "Attached logging policy to role"
+        
+        # Clean up temp files
+        rm -f /tmp/bedrock-trust-policy.json /tmp/bedrock-logging-policy.json
+        
+        # Wait for IAM to propagate (can take up to 10 seconds)
+        log_info "Waiting for IAM role to propagate (this can take 10-15 seconds)..."
+        sleep 15
+    else
+        log_warning "Could not create IAM role (may lack permissions). Checking if role exists..."
+        if aws iam get-role --role-name "$ROLE_NAME" --region "$AWS_REGION" >/dev/null 2>&1; then
+            log_success "Role exists, will use it"
+        else
+            log_error "Cannot create or find IAM role. Bedrock logging may not work."
+            log_info "Please ask your administrator to create the role or grant iam:CreateRole permission"
+        fi
+    fi
+fi
+
+log_info "Configuring Bedrock to log model invocations to CloudWatch..."
+
+# Enable model invocation logging (without S3 config to avoid validation errors)
+BEDROCK_LOGGING_OUTPUT=$(aws bedrock put-model-invocation-logging-configuration \
+    --logging-config "{
+        \"cloudWatchConfig\": {
+            \"logGroupName\": \"$LOG_GROUP_NAME\",
+            \"roleArn\": \"$ROLE_ARN\"
+        },
+        \"textDataDeliveryEnabled\": true,
+        \"imageDataDeliveryEnabled\": true,
+        \"embeddingDataDeliveryEnabled\": true
+    }" \
+    --region "$AWS_REGION" 2>&1)
+
+if [ $? -eq 0 ]; then
+    log_success "Bedrock model invocation logging enabled"
+else
+    if echo "$BEDROCK_LOGGING_OUTPUT" | grep -q "Failed to validate permissions"; then
+        log_warning "IAM role permissions validation failed"
+        log_info "The role was just created and may need more time to propagate"
+        log_info "Retrying in 10 seconds..."
+        sleep 10
+        
+        # Retry once
+        if aws bedrock put-model-invocation-logging-configuration \
+            --logging-config "{
+                \"cloudWatchConfig\": {
+                    \"logGroupName\": \"$LOG_GROUP_NAME\",
+                    \"roleArn\": \"$ROLE_ARN\"
+                },
+                \"textDataDeliveryEnabled\": true,
+                \"imageDataDeliveryEnabled\": true,
+                \"embeddingDataDeliveryEnabled\": true
+            }" \
+            --region "$AWS_REGION" 2>&1; then
+            log_success "Bedrock model invocation logging enabled (after retry)"
+        else
+            log_warning "Could not enable Bedrock logging after retry"
+            log_info "You can enable it manually later with: aws bedrock put-model-invocation-logging-configuration"
+        fi
+    else
+        log_warning "Could not enable Bedrock logging: $BEDROCK_LOGGING_OUTPUT"
+        log_info "You can enable it manually later if needed"
+    fi
+fi
 
 echo ""
 log_info "=========================================="

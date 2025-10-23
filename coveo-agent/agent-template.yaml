@@ -9,7 +9,7 @@ Parameters:
 
   BedrockModelId:
     Type: String
-    Default: us.anthropic.claude-3-7-sonnet-20250219-v1:0
+    Default: us.amazon.nova-lite-v1:0
     Description: Bedrock model ID for the agent
 
   MCPRuntimeArn:

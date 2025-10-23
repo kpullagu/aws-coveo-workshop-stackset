@@ -23,8 +23,9 @@ Parameters:
   BedrockFoundationModel:
     Type: String
     Description: Bedrock foundation model ID for the agent
-    Default: anthropic.claude-3-sonnet-20240229-v1:0
+    Default: amazon.nova-lite-v1:0
     AllowedValues:
+      - amazon.nova-lite-v1:0
       - anthropic.claude-3-sonnet-20240229-v1:0
       - anthropic.claude-3-haiku-20240307-v1:0
       - anthropic.claude-instant-v1

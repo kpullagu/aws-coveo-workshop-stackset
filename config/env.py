@@ -137,7 +137,7 @@ def get_config() -> Dict[str, Any]:
         },
         'BEDROCK_MODEL_ID': {
             'env': 'BEDROCK_MODEL_ID',
-            'default': 'anthropic.claude-3-sonnet-20240229-v1:0',
+            'default': 'amazon.nova-lite-v1:0',
             'required': False
         },
         
