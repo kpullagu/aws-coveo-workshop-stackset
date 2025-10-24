@@ -213,14 +213,15 @@ Resources:
         # Enable detailed logging
         LOG_LEVEL: INFO
         PYTHONUNBUFFERED: "1"
-        # Enable Observability Features
-        AWS_XRAY_TRACING_ENABLED: "true"
-        AWS_XRAY_DAEMON_ADDRESS: "xray-daemon:2000"
-        OTEL_TRACES_EXPORTER: "xray"
-        OTEL_METRICS_EXPORTER: "cloudwatch"
-        OTEL_LOGS_EXPORTER: "cloudwatch"
+        # Enable Observability Features - ADOT Configuration
+        AGENT_OBSERVABILITY_ENABLED: "true"
+        OTEL_PYTHON_DISTRO: "aws_distro"
+        OTEL_PYTHON_CONFIGURATOR: "aws_configurator"
         OTEL_SERVICE_NAME: !Sub "${StackPrefix}_CoveoAgent"
-        OTEL_RESOURCE_ATTRIBUTES: !Sub "service.name=${StackPrefix}_CoveoAgent,service.namespace=workshop,deployment.environment=production"
+        OTEL_RESOURCE_ATTRIBUTES: !Sub "service.name=${StackPrefix}_CoveoAgent,aws.log.group.names=${AgentRuntimeLogGroup}"
+        OTEL_EXPORTER_OTLP_LOGS_HEADERS: !Sub "x-aws-log-group=${AgentRuntimeLogGroup},x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore"
+        OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+        OTEL_TRACES_EXPORTER: "otlp"
       Tags:
         Name: !Sub '${AWS::StackName}-agent-runtime'
         Project: CoveoAWSWorkshop

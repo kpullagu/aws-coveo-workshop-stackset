@@ -192,6 +192,22 @@ else
 fi
 echo ""
 
+# Step 4: Configure X-Ray trace segment destination for Transaction Search
+echo "Step 4: Configuring X-Ray for Transaction Search..."
+echo "Enabling CloudWatch Logs as trace segment destination..."
+
+aws xray update-trace-segment-destination \
+    --destination CloudWatchLogs \
+    --region "$REGION" > /dev/null 2>&1
+
+if [ $? -eq 0 ]; then
+    echo "✓ X-Ray configured to use CloudWatch Logs for traces"
+    echo "✓ Transaction Search enabled (OTLP API support)"
+else
+    echo "⚠️  X-Ray configuration may have failed (might already be configured)"
+fi
+echo ""
+
 # Get Agent runtime ARN from CloudFormation outputs
 echo "Getting Agent runtime ARN..."
 AGENT_RUNTIME_ARN=$(aws cloudformation describe-stacks \

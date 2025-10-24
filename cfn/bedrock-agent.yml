@@ -36,8 +36,8 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub '${StackPrefix}-bedrock-agent-role'
-      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
       Description: Execution role for Bedrock Agent
+      PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/solution-engineer-boundary'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

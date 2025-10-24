@@ -417,6 +417,72 @@ fi
 log_success "CloudFormation stack deployed successfully!"
 echo ""
 
+# Enable CloudWatch Transaction Search for AgentCore Observability
+echo ""
+log_info "=========================================="
+log_info "Enabling CloudWatch Transaction Search"
+log_info "=========================================="
+log_info "Setting up observability for AgentCore spans and traces..."
+
+# Step 1: Create resource policy for X-Ray to write to CloudWatch Logs
+log_info "Configuring X-Ray access to CloudWatch Logs..."
+
+POLICY_DOCUMENT=$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TransactionSearchXRayAccess",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "xray.amazonaws.com"
+      },
+      "Action": "logs:PutLogEvents",
+      "Resource": [
+        "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:aws/spans:*",
+        "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/application-signals/data:*"
+      ],
+      "Condition": {
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:xray:${AWS_REGION}:${AWS_ACCOUNT_ID}:*"
+        },
+        "StringEquals": {
+          "aws:SourceAccount": "${AWS_ACCOUNT_ID}"
+        }
+      }
+    }
+  ]
+}
+EOF
+)
+
+aws logs put-resource-policy \
+    --policy-name TransactionSearchXRayAccess \
+    --policy-document "$POLICY_DOCUMENT" \
+    --region "$AWS_REGION" >/dev/null 2>&1 && \
+    log_success "X-Ray resource policy configured" || \
+    log_info "Resource policy already exists (this is normal)"
+
+# Step 2: Configure trace segment destination to CloudWatch Logs
+log_info "Configuring X-Ray trace destination..."
+aws xray update-trace-segment-destination \
+    --destination CloudWatchLogs \
+    --region "$AWS_REGION" >/dev/null 2>&1 && \
+    log_success "Trace destination set to CloudWatch Logs" || \
+    log_info "Trace destination already configured"
+
+# Step 3: Configure sampling percentage (100% for workshop)
+log_info "Configuring trace sampling (100% for workshop)..."
+aws xray update-indexing-rule \
+    --name "Default" \
+    --rule '{"Probabilistic": {"DesiredSamplingPercentage": 100}}' \
+    --region "$AWS_REGION" >/dev/null 2>&1 && \
+    log_success "Sampling set to 100% (all traces captured)" || \
+    log_info "Sampling already configured"
+
+log_success "CloudWatch Transaction Search enabled!"
+echo ""
+
 # Enable Bedrock Model Invocation Logging
 echo ""
 log_info "=========================================="

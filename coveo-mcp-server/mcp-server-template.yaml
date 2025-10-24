@@ -279,11 +279,27 @@ Resources:
 
 
   # ========================================================================
+  # CloudWatch Log Group for MCP Server
+  # ========================================================================
+  
+  MCPServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/bedrock-agentcore/runtimes/${StackPrefix}_Coveo_MCPServer_Tools'
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-mcp-server-logs'
+        - Key: Purpose
+          Value: 'MCP Server Application Logs'
+
+  # ========================================================================
   # AGENTCORE MODULE - MCP Server Runtime
   # ========================================================================
 
   MCPServerRuntime:
     Type: AWS::BedrockAgentCore::Runtime
+    DependsOn: MCPServerLogGroup
     Properties:
       AgentRuntimeName: !Sub "${StackPrefix}_Coveo_MCPServer_Tools"
       AgentRuntimeArtifact:

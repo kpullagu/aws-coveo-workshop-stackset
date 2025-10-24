@@ -27,4 +27,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8080/ping || exit 1
 
 USER appuser
-CMD ["python", "app.py"]
+# Use OpenTelemetry auto-instrumentation for observability
+CMD ["opentelemetry-instrument", "python", "app.py"]
