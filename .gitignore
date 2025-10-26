@@ -57,6 +57,7 @@ lambdas/agentcore_runtime_py/bin/
 
 # Secrets and credentials
 .env
+.env.stacksets
 config/.env
 *.pem
 *.key
@@ -123,3 +124,46 @@ Instructor/
 Lab*/
 scripts/deploy-workshop-with-gaps.sh
 scripts/prepare-lab-gaps.sh
+
+# ============================================================================
+# NON-STACKSET FILES (Single-Account Deployment - Not Used in StackSets)
+# ============================================================================
+# These files are for single-account deployment and are not needed for
+# multi-account StackSets deployment. They can be safely removed.
+# ============================================================================
+
+# Single-Account CloudFormation Templates (not used in StackSets)
+cfn/master.yml
+cfn/shared-core.yml
+cfn/shared-core-apprunner.yml
+cfn/auth-cognito.yml
+cfn/bedrock-agent.yml
+cfn/agentcore-runtime.yml
+cfn/ui-apprunner.yml
+
+# Single-Account Deployment Scripts (not used in StackSets)
+scripts/deploy-complete-workshop.sh
+scripts/deploy-main-infra.sh
+scripts/deploy-mcp.sh
+scripts/deploy-agent.sh
+scripts/deploy-ui-apprunner.sh
+scripts/configure-cognito.sh
+scripts/destroy.sh
+scripts/validate-before-deploy.sh
+scripts/package-lambdas.sh
+scripts/create-lambda-layer.sh
+scripts/seed-ssm-secrets.sh
+scripts/show-deployment-info.sh
+
+# Configuration files (not used in StackSets)
+config/env.py
+config/env.schema.json
+
+# Note: To remove these files from your repository:
+# 1. Review the list above
+# 2. Run: git rm -r cfn/master.yml cfn/shared-core.yml ... (etc)
+# 3. Or delete manually and commit
+# 
+# These files are kept in .gitignore for reference but can be deleted
+# if you only need StackSets deployment.
+.env.stacksets

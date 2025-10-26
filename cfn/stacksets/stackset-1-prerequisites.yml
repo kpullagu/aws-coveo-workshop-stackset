@@ -1,0 +1,379 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StackSet Layer 1: Prerequisites - S3 Buckets, ECR Repositories, IAM Roles'
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Default: workshop
+    Description: Prefix for all resources
+  
+  MasterAccountId:
+    Type: String
+    Description: AWS Account ID of the master account (for ECR cross-account access)
+  
+  Environment:
+    Type: String
+    Default: workshop
+    Description: Environment name
+    AllowedValues:
+      - dev
+      - workshop
+      - prod
+
+Resources:
+  # ==========================================
+  # Lambda Function to Empty S3 Buckets on Stack Deletion
+  # ==========================================
+  
+  EmptyS3BucketRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3BucketAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:ListBucketVersions
+                  - s3:DeleteObject
+                  - s3:DeleteObjectVersion
+                Resource:
+                  - !Sub 'arn:aws:s3:::${StackPrefix}-${AWS::AccountId}-*'
+                  - !Sub 'arn:aws:s3:::${StackPrefix}-${AWS::AccountId}-*/*'
+
+  EmptyS3BucketFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-empty-s3-bucket'
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt EmptyS3BucketRole.Arn
+      Timeout: 900
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          s3 = boto3.client('s3')
+          
+          def handler(event, context):
+              logger.info(f'Event: {event}')
+              bucket_name = event['ResourceProperties'].get('BucketName')
+              
+              try:
+                  if event['RequestType'] == 'Delete':
+                      if bucket_name:
+                          logger.info(f'Emptying bucket: {bucket_name}')
+                          
+                          # Delete all versions and delete markers
+                          paginator = s3.get_paginator('list_object_versions')
+                          for page in paginator.paginate(Bucket=bucket_name):
+                              objects_to_delete = []
+                              
+                              # Add versions
+                              if 'Versions' in page:
+                                  for version in page['Versions']:
+                                      objects_to_delete.append({
+                                          'Key': version['Key'],
+                                          'VersionId': version['VersionId']
+                                      })
+                              
+                              # Add delete markers
+                              if 'DeleteMarkers' in page:
+                                  for marker in page['DeleteMarkers']:
+                                      objects_to_delete.append({
+                                          'Key': marker['Key'],
+                                          'VersionId': marker['VersionId']
+                                      })
+                              
+                              # Delete objects in batches
+                              if objects_to_delete:
+                                  s3.delete_objects(
+                                      Bucket=bucket_name,
+                                      Delete={'Objects': objects_to_delete}
+                                  )
+                                  logger.info(f'Deleted {len(objects_to_delete)} objects')
+                          
+                          logger.info(f'Successfully emptied bucket: {bucket_name}')
+                  
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  logger.error(f'Error: {str(e)}')
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+
+  # ==========================================
+  # S3 Buckets (Account-Specific Naming)
+  # ==========================================
+  
+  CfnTemplateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub '${StackPrefix}-${AWS::AccountId}-cfn-templates'
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+          - Id: ExpireAllObjectsOnDelete
+            Status: Enabled
+            ExpirationInDays: 1
+            NoncurrentVersionExpirationInDays: 1
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false  # Must be false to allow cross-account replication policy
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false  # Must be false to allow cross-account replication
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-cfn-templates'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Bucket policy to allow replication from master account
+  CfnTemplateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CfnTemplateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowReplicationFromMaster
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${MasterAccountId}:role/${StackPrefix}-s3-replication-role'
+            Action:
+              - s3:ObjectOwnerOverrideToBucketOwner
+              - s3:ReplicateObject
+              - s3:ReplicateDelete
+              - s3:ReplicateTags
+              - s3:PutObject
+              - s3:PutObjectAcl
+              - s3:PutObjectTagging
+              - s3:GetBucketVersioning
+              - s3:PutBucketVersioning
+            Resource:
+              - !Sub '${CfnTemplateBucket.Arn}/*'
+              - !GetAtt CfnTemplateBucket.Arn
+
+  # Custom resource to empty CfnTemplateBucket on deletion
+  EmptyCfnTemplateBucket:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt EmptyS3BucketFunction.Arn
+      BucketName: !Ref CfnTemplateBucket
+
+  UIBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub '${StackPrefix}-${AWS::AccountId}-ui'
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+          - Id: ExpireAllObjectsOnDelete
+            Status: Enabled
+            ExpirationInDays: 1
+            NoncurrentVersionExpirationInDays: 1
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Custom resource to empty UIBucket on deletion
+  EmptyUIBucket:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt EmptyS3BucketFunction.Arn
+      BucketName: !Ref UIBucket
+
+  # ==========================================
+  # ECR Repositories (with Cross-Account Access)
+  # ==========================================
+  
+  McpServerRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${StackPrefix}-coveo-mcp-server'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": {"type": "expire"}
+            }]
+          }
+      RepositoryPolicyText: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "AllowCrossAccountPull",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::${MasterAccountId}:root"
+              },
+              "Action": [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability"
+              ]
+            },
+            {
+              "Sid": "AllowBedrockAgentCorePull",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "bedrock-agentcore.amazonaws.com"
+              },
+              "Action": [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability"
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "${AWS::AccountId}"
+                }
+              }
+            }
+          ]
+        }
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-mcp-server-repo'
+        - Key: Environment
+          Value: !Ref Environment
+
+  UIRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${StackPrefix}-ui'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep last 10 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+              },
+              "action": {"type": "expire"}
+            }]
+          }
+      RepositoryPolicyText: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "AllowCrossAccountPull",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": "arn:aws:iam::${MasterAccountId}:root"
+              },
+              "Action": [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability"
+              ]
+            },
+            {
+              "Sid": "AllowAppRunnerPull",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "build.apprunner.amazonaws.com"
+              },
+              "Action": [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability"
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": "${AWS::AccountId}"
+                }
+              }
+            }
+          ]
+        }
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui-repo'
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  CfnTemplateBucketName:
+    Description: S3 bucket for CloudFormation templates
+    Value: !Ref CfnTemplateBucket
+    Export:
+      Name: !Sub '${StackPrefix}-CfnTemplateBucket'
+
+  UIBucketName:
+    Description: S3 bucket for UI assets
+    Value: !Ref UIBucket
+    Export:
+      Name: !Sub '${StackPrefix}-UIBucket'
+
+
+
+  McpServerRepositoryUri:
+    Description: ECR repository URI for MCP server
+    Value: !GetAtt McpServerRepository.RepositoryUri
+    Export:
+      Name: !Sub '${StackPrefix}-McpServerRepositoryUri'
+
+  UIRepositoryUri:
+    Description: ECR repository URI for UI
+    Value: !GetAtt UIRepository.RepositoryUri
+    Export:
+      Name: !Sub '${StackPrefix}-UIRepositoryUri'

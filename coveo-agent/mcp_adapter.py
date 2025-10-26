@@ -29,10 +29,15 @@ class CoveoMCPAdapter:
         self.mcp_url = mcp_url or os.getenv("COVEO_MCP_URL")
         self._sse_read_timeout = int(sse_read_timeout)
         self._request_timeout = int(request_timeout)
+        self._session_id = None  # For observability correlation
 
         # Get AWS credentials for SigV4 authentication
         session = boto3.Session()
         self._credentials = session.get_credentials()
+    
+    def set_session_id(self, session_id: str):
+        """Set session ID for observability correlation"""
+        self._session_id = session_id
     
     def set_controls(self, controls: Optional[Dict] = None):
         """Set controls for tool customization"""
@@ -84,9 +89,19 @@ class CoveoMCPAdapter:
 
     async def _call_tool_async(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         logger.debug("DEBUG: _call_tool_async called: name=%s, arguments=%s", name, arguments)
+        
+        # OBSERVABILITY: Log MCP tool call with session correlation
+        if self._session_id:
+            print(f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_call tool={name}")
+        
         try:
             async with self._session() as session:
                 result = await session.call_tool(name, arguments)
+                
+                # OBSERVABILITY: Log MCP tool success
+                if self._session_id:
+                    print(f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_success tool={name}")
+                
                 # Normalize MCP result content to plain text (or JSON string) for the agent
                 items = []
                 for c in getattr(result, "content", []) or []:
@@ -98,6 +113,10 @@ class CoveoMCPAdapter:
                         items.append(f"Error: {getattr(c, 'error', 'unknown error')}")
                 return {"content": "\n".join(items) if items else ""}
         except Exception as e:
+            # OBSERVABILITY: Log MCP tool error
+            if self._session_id:
+                print(f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_error tool={name} error={type(e).__name__}")
+            
             logger.error("ERROR: Exception in _call_tool_async for tool %s", name)
             logger.error("ERROR: Exception type: %s", type(e).__name__)
             logger.error("ERROR: Exception message: %s", str(e))

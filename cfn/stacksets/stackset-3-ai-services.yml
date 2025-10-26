@@ -1,0 +1,517 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'StackSet Layer 3: AI Services - Bedrock Agent, AgentCore Runtime, MCP Server'
+
+Parameters:
+  StackPrefix:
+    Type: String
+    Default: workshop
+    Description: Prefix for all resources
+  
+  Environment:
+    Type: String
+    Default: workshop
+    Description: Environment name
+  
+  BedrockFoundationModel:
+    Type: String
+    Default: 'us.amazon.nova-lite-v1:0'
+    Description: Bedrock foundation model ID (cross-region inference profile)
+  
+  MasterAccountId:
+    Type: String
+    Description: Master account ID for ECR cross-account access (passed from deployment script)
+
+Resources:
+  # ==========================================
+  # Bedrock Agent IAM Role
+  # ==========================================
+  
+  BedrockAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-bedrock-agent-role'
+      Description: Execution role for Bedrock Agent
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Policies:
+        - PolicyName: BedrockModelInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockFoundationModel}'
+        - PolicyName: LambdaInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackPrefix}-passage-tool'
+
+  # ==========================================
+  # Bedrock Agent
+  # ==========================================
+  
+  CoveoAgent:
+    Type: AWS::Bedrock::Agent
+    Properties:
+      AgentName: !Sub '${StackPrefix}-coveo-agent'
+      Description: 'Bedrock Agent with Coveo Passage Retrieval for Finance & Travel Knowledge Hub'
+      AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
+      FoundationModel: !Ref BedrockFoundationModel
+      Instruction: |
+        You are the Finance & Travel Knowledge Assistant, providing accurate information from authoritative government and educational sources.
+        
+        ## Core Principles
+        
+        1. **Grounding**: Use ONLY information from the passage retrieval tool. Never make up information or provide answers without retrieved passages.
+        2. **Formatting**: Provide clean, well-structured answers in markdown format suitable for HTML display with proper headings, lists, and emphasis.
+        3. **Sources**: Always cite sources with titles and URLs from retrieved passages.
+        4. **Clarity**: Be concise and direct. Lead with the answer, then provide supporting details.
+        5. **No Internal Reasoning**: NEVER include thinking tags, reasoning steps, or internal decision-making in your response. Keep all reasoning internal.
+        
+        ## Tool Usage Strategy
+        
+        1. **Always use retrieve_passages** for every question
+           - Retrieve 5-8 passages (k=5 to k=8)
+           - Use the exact user question as the query
+           - Synthesize information ONLY from retrieved passages
+        
+        2. **If passages are insufficient**:
+           - State what you found
+           - Explain what's missing
+           - Suggest how the user can refine their question or where to find more information
+        
+        3. **Never answer without passages**:
+           - If no relevant passages are found, acknowledge this
+           - Do not provide information from your training data
+           - Suggest alternative queries or official sources
+      IdleSessionTTLInSeconds: 600
+      AutoPrepare: true
+      ActionGroups:
+        - ActionGroupName: CoveoPassageRetrieval
+          Description: 'Retrieve relevant passages from Finance & Travel knowledge base'
+          ActionGroupExecutor:
+            Lambda: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackPrefix}-passage-tool'
+          FunctionSchema:
+            Functions:
+              - Name: retrieve_passages
+                Description: 'Search for relevant text passages in the finance and travel knowledge base using semantic search'
+                Parameters:
+                  query:
+                    Description: 'The search query or question to find relevant passages for'
+                    Type: string
+                    Required: true
+                  k:
+                    Description: 'Number of passages to retrieve (1-20, default 5)'
+                    Type: number
+                    Required: false
+
+  # Lambda permission for Bedrock Agent
+  PassageToolInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-passage-tool'
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceArn: !GetAtt CoveoAgent.AgentArn
+
+  # Agent Alias
+  AgentAlias:
+    Type: AWS::Bedrock::AgentAlias
+    Properties:
+      AgentId: !Ref CoveoAgent
+      AgentAliasName: production
+      Description: Production alias for Coveo workshop agent
+
+  # Store Agent ID in SSM
+  AgentIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/agent-id'
+      Description: Bedrock Agent ID
+      Type: String
+      Value: !Ref CoveoAgent
+
+  # Store Agent Alias ID in SSM
+  AgentAliasIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/agent-alias-id'
+      Description: Bedrock Agent Alias ID
+      Type: String
+      Value: !GetAtt AgentAlias.AgentAliasId
+
+  # ==========================================
+  # AgentCore Runtime for MCP Server
+  # ==========================================
+  
+  AgentCoreLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/bedrock-agentcore/runtimes/${StackPrefix}_Coveo_MCPServer_Tools'
+      RetentionInDays: 7
+
+  AgentCoreRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeName: !Sub "${StackPrefix}_Coveo_MCPServer_Tools"
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Sub '${MasterAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${StackPrefix}-coveo-mcp-server-master:latest'
+      EnvironmentVariables:
+        MCP_TRANSPORT: streamable-http
+        MCP_HOST: 0.0.0.0
+        MCP_PORT: '8000'
+        COVEO_PLATFORM_URL: https://platform.cloud.coveo.com
+        PYTHONUNBUFFERED: '1'
+        LOG_LEVEL: DEBUG
+        MCP_NAME: coveo_mcp_server
+        MCP_HTTP_PATH: /mcp
+      RoleArn: 
+        Fn::ImportValue: !Sub '${StackPrefix}-AgentCoreRuntimeRoleArn'
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      ProtocolConfiguration: MCP
+      Description: !Sub 'Coveo MCP Server Runtime for ${StackPrefix}'
+
+  AgentCoreRuntimeEndpoint:
+    Type: AWS::BedrockAgentCore::RuntimeEndpoint
+    DependsOn:
+      - AgentCoreRuntime
+    Properties:
+      AgentRuntimeId: !GetAtt AgentCoreRuntime.AgentRuntimeId
+      Name: !Sub '${StackPrefix}_coveo_mcp_endpoint'
+      Description: !Sub 'Public endpoint for ${StackPrefix} Coveo MCP Runtime'
+
+  # Store MCP Runtime ARN in SSM
+  # NOTE: This is the MCP Runtime (workshop_Coveo_MCPServer_Tools)
+  # The Agent Runtime uses this to call MCP tools
+  MCPRuntimeArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/mcp-runtime-arn'
+      Description: MCP Runtime ARN for Coveo MCP Server (workshop_Coveo_MCPServer_Tools)
+      Type: String
+      Value: !GetAtt AgentCoreRuntime.AgentRuntimeArn
+
+  MCPRuntimeIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/mcp-runtime-id'
+      Description: MCP Runtime ID for Coveo MCP Server
+      Type: String
+      Value: !GetAtt AgentCoreRuntime.AgentRuntimeId
+
+  # ==========================================
+  # Bedrock Model Invocation Logging Role
+  # ==========================================
+  
+  BedrockModelInvocationLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${StackPrefix}-bedrock-modelinv-logs-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BedrockModelInvCWLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock/modelinvocations/*"
+
+  # ==========================================
+  # Coveo Agent Runtime (Orchestrator)
+  # This is separate from MCP Server Runtime
+  # Agent orchestrates MCP tool calls with Bedrock
+  # ==========================================
+  
+  AgentExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${StackPrefix}-agent-execution-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess
+      Policies:
+        - PolicyName: AgentCoreExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ECRTokenAccess
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: ECRImageAccess
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                Resource:
+                  - !Sub "arn:aws:ecr:${AWS::Region}:${MasterAccountId}:repository/${StackPrefix}-coveo-agent-master"
+                  - !Sub "arn:aws:ecr:${AWS::Region}:${MasterAccountId}:repository/${StackPrefix}-coveo-mcp-server-master"
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock/modelinvocations/*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/*"
+              - Sid: BedrockInvoke
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"
+              - Sid: BedrockModelInvocationLogging
+                Effect: Allow
+                Action:
+                  - bedrock:PutModelInvocationLoggingConfiguration
+                  - bedrock:GetModelInvocationLoggingConfiguration
+                Resource: "*"
+              - Sid: AgentCoreRuntimeInvoke
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                Resource: !GetAtt AgentCoreRuntime.AgentRuntimeArn
+              - Sid: WorkloadAccessToken
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:GetWorkloadAccessToken
+                Resource: "*"
+              - Sid: SSMParameterAccess
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*"
+              - Sid: MemoryAccess
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:CreateMemoryRecord
+                  - bedrock-agentcore:GetMemoryRecord
+                  - bedrock-agentcore:ListMemoryRecords
+                  - bedrock-agentcore:DeleteMemoryRecord
+                  - bedrock-agentcore:RetrieveMemories
+                Resource: "*"
+              - Sid: XRayTracing
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+              - Sid: CloudWatchMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: 
+                      - AWS/BedrockAgentCore
+                      - CoveoAgent
+
+  CoveoAgentMemory:
+    Type: AWS::BedrockAgentCore::Memory
+    Properties:
+      Name: !Sub "${StackPrefix}_CoveoAgent_Memory"
+      Description: "Memory for Coveo Agent conversations - stores session history and summaries"
+      EventExpiryDuration: 7
+      MemoryExecutionRoleArn: !GetAtt AgentExecutionRole.Arn
+      MemoryStrategies:
+        - SummaryMemoryStrategy:
+            Name: "SessionSummarizer"
+            Description: "Summarizes conversation sessions for context retention"
+            Namespaces:
+              - "/summaries/{actorId}/{sessionId}"
+
+  CoveoAgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/bedrock/agentcore/${AWS::StackName}'
+      RetentionInDays: 7
+
+  ModelInvocationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/bedrock/modelinvocations/${AWS::StackName}'
+      RetentionInDays: 7
+
+  CoveoAgentRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    DependsOn: CoveoAgentMemory
+    Properties:
+      AgentRuntimeName: !Sub "${StackPrefix}_CoveoAgent"
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Sub '${MasterAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${StackPrefix}-coveo-agent-master:latest'
+      RoleArn: !GetAtt AgentExecutionRole.Arn
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      Description: "Coveo Agent that orchestrates MCP tool calls with Bedrock"
+      EnvironmentVariables:
+        MEMORY_ID: !GetAtt CoveoAgentMemory.MemoryId
+        EXECUTION_ROLE_ARN: !GetAtt AgentExecutionRole.Arn
+        MODEL_INVOCATION_LOG_GROUP: !Ref ModelInvocationLogGroup
+        AGENT_RUNTIME_LOG_GROUP: !Ref CoveoAgentLogGroup
+        LOG_LEVEL: INFO
+        PYTHONUNBUFFERED: "1"
+        AGENT_OBSERVABILITY_ENABLED: "true"
+        OTEL_PYTHON_DISTRO: "aws_distro"
+        OTEL_PYTHON_CONFIGURATOR: "aws_configurator"
+        OTEL_SERVICE_NAME: !Sub "${StackPrefix}_CoveoAgent"
+        OTEL_RESOURCE_ATTRIBUTES: !Sub "service.name=${StackPrefix}_CoveoAgent,aws.log.group.names=${CoveoAgentLogGroup}"
+        OTEL_EXPORTER_OTLP_LOGS_HEADERS: !Sub "x-aws-log-group=${CoveoAgentLogGroup},x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore"
+        OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+        OTEL_TRACES_EXPORTER: "otlp"
+
+  # ==========================================
+  # Coveo Agent Runtime Endpoint
+  # NOTE: Commented out because endpoint already exists from previous deployment
+  # The DEFAULT endpoint is already created and working
+  # Uncomment only for fresh deployments where endpoint doesn't exist
+  # ==========================================
+  # CoveoAgentRuntimeEndpoint:
+  #   Type: AWS::BedrockAgentCore::RuntimeEndpoint
+  #   DependsOn:
+  #     - CoveoAgentRuntime
+  #   Properties:
+  #     AgentRuntimeId: !GetAtt CoveoAgentRuntime.AgentRuntimeId
+  #     Name: DEFAULT
+  #     Description: !Sub 'Default endpoint for ${StackPrefix} Coveo Agent runtime'
+  #     Tags:
+  #       Name: !Sub '${StackPrefix}-coveo-agent-endpoint'
+  #       Environment: !Ref Environment
+  #   UpdateReplacePolicy: Retain
+  #   DeletionPolicy: Retain
+
+  # Store Coveo Agent Runtime ARN in SSM
+  # IMPORTANT: This is stored as "runtime-arn" (not "agent-runtime-arn")
+  # Lambda reads /${StackPrefix}/coveo/runtime-arn to call the Agent Runtime
+  # This is the AGENT Runtime (workshop_CoveoAgent), NOT the MCP Runtime
+  CoveoAgentRuntimeArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/runtime-arn'
+      Description: Agent Runtime ARN (workshop_CoveoAgent) - Lambda calls this, NOT MCP Runtime
+      Type: String
+      Value: !GetAtt CoveoAgentRuntime.AgentRuntimeArn
+
+  CoveoAgentRuntimeIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/runtime-id'
+      Description: Agent Runtime ID (workshop_CoveoAgent)
+      Type: String
+      Value: !GetAtt CoveoAgentRuntime.AgentRuntimeId
+
+  # Store Agent Endpoint Name in SSM
+  AgentEndpointNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${StackPrefix}/coveo/agent-endpoint-name'
+      Description: Agent runtime endpoint name used by the UI/Lambda
+      Type: String
+      Value: DEFAULT
+
+Outputs:
+  AgentId:
+    Description: Bedrock Agent ID
+    Value: !Ref CoveoAgent
+    Export:
+      Name: !Sub '${StackPrefix}-bedrock-agent-id'
+
+  AgentArn:
+    Description: Bedrock Agent ARN
+    Value: !GetAtt CoveoAgent.AgentArn
+    Export:
+      Name: !Sub '${StackPrefix}-bedrock-agent-arn'
+
+  AgentAliasId:
+    Description: Bedrock Agent Alias ID
+    Value: !GetAtt AgentAlias.AgentAliasId
+    Export:
+      Name: !Sub '${StackPrefix}-bedrock-agent-alias-id'
+
+  MCPServerRuntimeId:
+    Description: ID of the Coveo MCP server runtime
+    Value: !GetAtt AgentCoreRuntime.AgentRuntimeId
+    Export:
+      Name: !Sub '${StackPrefix}-MCPServerRuntimeId'
+
+  MCPServerRuntimeArn:
+    Description: ARN of the Coveo MCP server runtime
+    Value: !GetAtt AgentCoreRuntime.AgentRuntimeArn
+    Export:
+      Name: !Sub '${StackPrefix}-MCPServerRuntimeArn'
+
+  CoveoAgentMemoryId:
+    Description: "ID of the Coveo Agent Memory"
+    Value: !GetAtt CoveoAgentMemory.MemoryId
+    Export:
+      Name: !Sub '${StackPrefix}-CoveoAgentMemoryId'
+
+  CoveoAgentMemoryArn:
+    Description: "ARN of the Coveo Agent Memory"
+    Value: !GetAtt CoveoAgentMemory.MemoryArn
+    Export:
+      Name: !Sub '${StackPrefix}-CoveoAgentMemoryArn'
+
+  CoveoAgentRuntimeArn:
+    Description: "ARN of the Coveo Agent runtime"
+    Value: !GetAtt CoveoAgentRuntime.AgentRuntimeArn
+    Export:
+      Name: !Sub '${StackPrefix}-CoveoAgentRuntimeArn'
+
+  CoveoAgentRuntimeId:
+    Description: "ID of the Coveo Agent runtime"
+    Value: !GetAtt CoveoAgentRuntime.AgentRuntimeId
+    Export:
+      Name: !Sub '${StackPrefix}-CoveoAgentRuntimeId'

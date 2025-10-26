@@ -196,29 +196,8 @@ print(f"DEBUG: MCP_RUNTIME_ARN={MCP_RUNTIME_ARN}")
 MEMORY_ID = os.environ.get('MEMORY_ID')
 print(f"DEBUG: MEMORY_ID={MEMORY_ID}")
 
-# Configure Bedrock Model Invocation Logging
-try:
-    bedrock_client = boto3.client('bedrock', region_name=REGION)
-    log_group_name = f'/aws/bedrock/modelinvocations/{os.environ.get("AWS_STACK_NAME", "workshop-coveo-agent")}'
-    
-    bedrock_client.put_model_invocation_logging_configuration(
-        loggingConfig={
-            'cloudWatchConfig': {
-                'logGroupName': log_group_name,
-                'roleArn': os.environ.get('EXECUTION_ROLE_ARN', ''),  # Will be set by CloudFormation
-                'largeDataDeliveryS3Config': {
-                    'bucketName': '',  # Optional: S3 bucket for large payloads
-                    'keyPrefix': ''
-                }
-            },
-            'textDataDeliveryEnabled': True,
-            'imageDataDeliveryEnabled': False,
-            'embeddingDataDeliveryEnabled': False
-        }
-    )
-    print(f"DEBUG: Model invocation logging configured to {log_group_name}")
-except Exception as e:
-    print(f"WARNING: Failed to configure model invocation logging: {e}")
+# NOTE: Bedrock Model Invocation Logging is configured via enable-bedrock-model-invocation-logging.sh
+# Do not configure it here to avoid conflicts and permission issues
 
 # Initialize BedrockAgentCoreApp
 app = BedrockAgentCoreApp()
@@ -302,6 +281,13 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
     session_id = payload.get("session_id", "default_session")
     actor_id = payload.get("actor_id", payload.get("user_id", "default_user"))
     user_text = payload.get("text") or payload.get("prompt") or ""
+    
+    # OBSERVABILITY: Log session start with correlation ID
+    print(f"OBSERVABILITY session_id={session_id} actor_id={actor_id} event=session_start")
+    print(f"OBSERVABILITY session_id={session_id} event=request_received text_length={len(user_text)}")
+    
+    # Set session ID in MCP adapter for correlation
+    mcp.set_session_id(session_id)
 
     # 3) Retrieve relevant memories if available
     conversation_context = ""
@@ -324,6 +310,8 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
 
     # 4) Build agent with policy & tools
     # Note: Region is configured via AWS_REGION environment variable, not passed to Agent
+    print(f"OBSERVABILITY session_id={session_id} event=tool_plan_start text='{user_text[:120]}'")
+    
     agent = Agent(
         model=MODEL_ID,
         system_prompt=SYSTEM_PROMPT + conversation_context,
@@ -331,6 +319,8 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
     )
 
     result = agent(user_text)
+    
+    print(f"OBSERVABILITY session_id={session_id} event=tool_plan_done")
 
     content = result.message.get("content", [{}])
     text = content[0].get("text") if content and isinstance(content, list) else str(result)
@@ -338,11 +328,16 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
     # Clean response to remove any thinking tags
     text = clean_response(text)
     
-    # 5) Extract sources from tool calls
+    # 5) Extract sources from tool calls and log tool usage
     sources = []
+    tools_used = []
     try:
         # Check if result has tool_calls or tool_use information
         if hasattr(result, 'tool_calls') and result.tool_calls:
+            # OBSERVABILITY: Log which tools were called
+            tools_used = [tc.name if hasattr(tc, 'name') else str(tc) for tc in result.tool_calls]
+            print(f"OBSERVABILITY session_id={session_id} event=tools_selected tools={','.join(tools_used)}")
+            
             for tool_call in result.tool_calls:
                 if hasattr(tool_call, 'result') and tool_call.result:
                     tool_result = tool_call.result
@@ -400,6 +395,9 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
             print(f"DEBUG: Stored conversation in memory for session {session_id}")
         except Exception as e:
             print(f"WARNING: Failed to store memory: {e}")
+    
+    # OBSERVABILITY: Log session completion
+    print(f"OBSERVABILITY session_id={session_id} event=session_complete sources_count={len(sources)} tools_used={','.join(tools_used) if tools_used else 'none'}")
     
     return {
         "response": text,

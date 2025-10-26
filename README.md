@@ -1,808 +1,570 @@
-# AWS Coveo Workshop: AI-Powered Search with Multi-Backend Architecture
+# AWS Coveo Workshop - Multi-Account StackSets Deployment
 
-[![AWS](https://img.shields.io/badge/AWS-Serverless-orange)](https://aws.amazon.com/)
+[![AWS](https://img.shields.io/badge/AWS-StackSets-orange)](https://aws.amazon.com/)
 [![Coveo](https://img.shields.io/badge/Coveo-Search%20API-blue)](https://www.coveo.com/)
-[![React](https://img.shields.io/badge/React-18-blue)](https://reactjs.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green)](https://nodejs.org/)
-[![Bedrock](https://img.shields.io/badge/AWS-Bedrock-purple)](https://aws.amazon.com/bedrock/)
+[![Bedrock](https://img.shields.io/badge/AWS-Bedrock%20AgentCore-purple)](https://aws.amazon.com/bedrock/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A builder workshop demonstrating AI-powered search and answering using Coveo's platform integrated with AWS serverless services, featuring multiple backend architectures including Bedrock AgentCore Runtime and MCP Server integration.
+A production-ready, multi-account AWS workshop demonstrating AI-powered search and answering using Coveo's platform integrated with AWS Bedrock AgentCore Runtime, deployed via AWS CloudFormation StackSets across multiple accounts in an AWS Organization.
 
-## 🎯 Workshop Overview
+---
 
-This workshop demonstrates a production-ready, scalable search and AI answering solution combining:
+## 📋 Table of Contents
 
-- **Coveo Search Platform** - Enterprise search with AI-powered relevance and answering
-- **AWS Serverless Architecture** - Lambda, API Gateway, Cognito, App Runner, ECR
-- **Bedrock AgentCore Runtime** - Serverless agent deployment with streaming responses
+- [Overview](#-overview)
+- [Architecture](#-architecture)
+- [Prerequisites](#-prerequisites)
+- [Quick Start](#-quick-start)
+- [Project Structure](#-project-structure)
+- [Deployment Process](#-deployment-process)
+- [Configuration](#-configuration)
+- [Testing](#-testing)
+- [Cleanup](#-cleanup)
+- [Troubleshooting](#-troubleshooting)
+- [Documentation](#-documentation)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
+
+## 🎯 Overview
+
+This workshop deploys a complete AI-powered search solution across multiple AWS accounts using **AWS CloudFormation StackSets** with **SERVICE_MANAGED** permissions. It demonstrates enterprise-scale deployment patterns with:
+
+- **Multi-Account Architecture** - Deploy to 10+ AWS accounts simultaneously
+- **AWS Organizations Integration** - Automatic account discovery and deployment
+- **Bedrock AgentCore Runtime** - Serverless AI agent execution with streaming
 - **MCP Server Integration** - Model Context Protocol for tool orchestration
-- **React Frontend** - Modern UI with Cognito authentication and real-time search
-- **Multiple Backend Modes** - Three distinct architectures (Coveo, BedrockAgent, CoveoMCP)
+- **Coveo Search Platform** - Enterprise search with AI-powered relevance
+- **Full Observability** - X-Ray tracing, CloudWatch Logs, session correlation
+- **Production-Ready** - Security, monitoring, and operational best practices
+
+### Key Features
+
+✅ **One-Command Deployment** - Deploy entire infrastructure with single script
+✅ **Multi-Account Support** - Deploy to unlimited AWS accounts via StackSets
+✅ **Cross-Account Replication** - S3 and ECR replication for Lambda packages and images
+✅ **Automated Configuration** - SSM parameters, Cognito, and observability setup
+✅ **Complete Observability** - X-Ray, CloudWatch Logs, Bedrock model invocation logging
+✅ **Secure by Default** - IAM roles, encryption, least privilege access
+✅ **Easy Cleanup** - Nuclear option for complete resource removal
+
+---
 
 ## 🏗️ Architecture
 
-### High-Level Architecture
+### High-Level Multi-Account Architecture
+
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         React UI (App Runner)                    │
-│  • Cognito Authentication  • Search Interface  • Facet Filters   │
-│  • Backend Mode Selector   • Real-time Results • Scrollable UI   │
-└────────────────────────────┬─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Master/Management Account                      │
+│  • ECR Repositories (MCP Server, Agent, UI images)                 │
+│  • S3 Bucket (Lambda packages, CloudFormation templates)           │
+│  • Lambda Layer (shared dependencies)                              │
+│  • StackSet Management (deployment orchestration)                  │
+└────────────────────────────┬────────────────────────────────────────┘
                              │
+                             │ AWS Organizations
+                             │ StackSets Deployment
                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    Express BFF (Backend for Frontend)            │
-│  • Routes API calls  • JWT validation  • Response transformation │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │
-                             ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                         API Gateway + Lambda                     │
-│  • search-proxy  • passages-proxy  • answering-proxy             │
-│  • bedrock-agent-chat  • agentcore-runtime  • query-suggest      │
-└─────────┬────────────────────────┬────────────────────┬──────────┘
-          │                        │                    │
-          ▼                        ▼                    ▼
-┌─────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│ Coveo Platform  │    │ AgentCore Runtime│    │   MCP Server     │
-│ • Search API    │    │ • Agent Execution│    │ • Tool Provider  │
-│ • Answering API │    │ • Streaming      │    │ • Coveo Tools    │
-│ • Passages API  │    │ • Memory         │    │ • HTTP Transport │
-└─────────────────┘    └──────────────────┘    └──────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Child Accounts (10+ accounts)                    │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Layer 1: Prerequisites                                       │ │
+│  │  • S3 Buckets (replicated from master)                      │ │
+│  │  • ECR Repositories (cross-account pull)                    │ │
+│  │  • IAM Roles (execution, replication)                       │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Layer 2: Core Infrastructure                                │ │
+│  │  • Lambda Functions (search, passages, answering)           │ │
+│  │  • API Gateway (RESTful API)                                │ │
+│  │  • Cognito User Pool (authentication)                       │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Layer 3: AI Services                                        │ │
+│  │  • Bedrock AgentCore MCP Runtime                            │ │
+│  │  • Bedrock AgentCore Agent Runtime                          │ │
+│  │  • SSM Parameters (configuration)                           │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Layer 4: UI                                                 │ │
+│  │  • App Runner Service (React UI + Express BFF)              │ │
+│  │  • CloudWatch Logs (application logs)                       │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Backend Modes
+### Deployment Flow
 
-The workshop supports three production-ready backend architectures:
+```
+1. Master Account Setup
+   ├─ Create ECR repositories
+   ├─ Build Docker images (MCP Server, Agent, UI)
+   ├─ Create Lambda Layer
+   └─ Package Lambda functions
 
-1. **Coveo Mode** - Direct Coveo API integration (fast, single-turn)
-2. **BedrockAgent Mode** - AgentCore Runtime with Bedrock orchestration (multi-turn, streaming)
-3. **CoveoMCP Mode** - MCP Server with AgentCore Gateway (tool-based, extensible)
+2. Layer 1 Deployment (Prerequisites)
+   ├─ Deploy to all accounts via StackSets
+   ├─ Create S3 buckets in each account
+   ├─ Setup S3 replication from master
+   └─ Wait for replication to complete
 
-### MCP Server Architecture
+3. Layer 2 Deployment (Core)
+   ├─ Deploy Lambda functions
+   ├─ Create API Gateway
+   ├─ Setup Cognito User Pool
+   └─ Configure IAM roles
 
-The MCP (Model Context Protocol) Server provides a tool-based architecture for AI agents:
+4. Layer 3 Deployment (AI Services)
+   ├─ Deploy AgentCore MCP Runtime
+   ├─ Deploy AgentCore Agent Runtime
+   ├─ Seed SSM parameters
+   └─ Enable Bedrock logging
 
-**Deployment Approach:**
-- **Local Docker Build** - Images built locally and pushed to ECR for fast iteration
-- **AgentCore Runtime** - Serverless deployment with automatic scaling
-- **Tool Integration** - Coveo API tools accessible via MCP protocol
+5. Layer 4 Deployment (UI)
+   ├─ Deploy App Runner services
+   ├─ Configure Cognito callbacks
+   └─ Enable X-Ray tracing
 
-**Key Components:**
-- `app.py` - Main MCP server application with tool definitions
-- `coveo_tools.py` - Coveo API tool implementations (search, passages, answering)
-- `Dockerfile` - Container image for AgentCore Runtime deployment
-- `mcp-server-template.yaml` - CloudFormation template for AWS resources
+6. Post-Deployment Configuration
+   ├─ Create Cognito test users
+   ├─ Collect deployment information
+   └─ Enable observability features
+```
 
-**Benefits:**
-- **Extensible** - Easy to add new tools and capabilities
-- **Standardized** - Uses MCP protocol for tool communication
-- **Scalable** - Serverless deployment with AgentCore Runtime
-- **Fast Development** - Local Docker builds for rapid iteration
+---
+
+
+## 📦 Prerequisites
+
+### Required Tools
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| **AWS CLI** | v2.x | AWS service interaction |
+| **Docker** | 20.x+ | Building container images |
+| **jq** | 1.6+ | JSON processing in scripts |
+| **Bash** | 4.x+ | Running deployment scripts |
+| **Git** | 2.x+ | Version control |
+
+### AWS Requirements
+
+1. **AWS Organizations**
+   - Active AWS Organization
+   - At least one Organizational Unit (OU)
+   - Child accounts in the OU
+
+2. **IAM Permissions** (Master Account)
+   - `organizations:*` - Manage Organizations
+   - `cloudformation:*` - Create StackSets
+   - `iam:*` - Create roles and policies
+   - `ecr:*` - Manage ECR repositories
+   - `s3:*` - Manage S3 buckets
+   - `lambda:*` - Create Lambda functions and layers
+
+3. **Cross-Account Role**
+   - `OrganizationAccountAccessRole` in all child accounts
+   - Trust relationship with master account
+   - Administrator access in child accounts
+
+4. **Service Quotas**
+   - StackSets: 100 per region (default)
+   - Lambda concurrent executions: 1000 (default)
+   - API Gateway: 10,000 requests/second (default)
+
+### Coveo Requirements
+
+1. **Coveo Organization**
+   - Active Coveo organization
+   - Search API key with permissions
+   - Answer configuration ID
+
+2. **Indexed Content**
+   - At least one search pipeline
+   - Indexed content sources
+   - Answer configuration setup
+
+### Installation
+
+#### macOS/Linux
+```bash
+# Install AWS CLI
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+# Install jq
+sudo apt-get install jq  # Ubuntu/Debian
+brew install jq          # macOS
+
+# Install Docker
+# Follow: https://docs.docker.com/engine/install/
+```
+
+#### Windows
+```powershell
+# Install AWS CLI
+msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi
+
+# Install jq
+choco install jq
+
+# Install Docker Desktop
+# Download from: https://www.docker.com/products/docker-desktop
+```
+
+---
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Step 1: Clone Repository
 
-- **AWS Account** with appropriate permissions
-- **AWS CLI v2** configured with credentials
-- **Docker Desktop** installed and running
-- **Node.js 18+** and npm
-- **Bash shell** (Git Bash on Windows, native on macOS/Linux)
-- **Coveo Organization** with API access
+```bash
+git clone https://github.com/your-org/aws-coveo-workshop.git
+cd aws-coveo-workshop
+```
 
-### Environment Setup
+### Step 2: Configure Environment
 
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd Workshop-Full
-   ```
+```bash
+# Copy the example configuration
+cp .env.stacksets.example .env.stacksets
 
-2. **Configure environment variables:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Coveo credentials
-   ```
+# Edit with your values
+nano .env.stacksets
+```
 
-   Required variables:
-   ```bash
-   COVEO_ORG_ID=your-org-id
-   COVEO_SEARCH_API_KEY=your-api-key
-   COVEO_ANSWER_CONFIG_ID=your-answer-config-id
-   ```
+**Required Configuration:**
+```bash
+# AWS Organizations
+OU_ID=ou-xxxx-xxxxxxxx                    # Your OU ID
+MASTER_ACCOUNT_ID=123456789012            # Master account ID
+AWS_REGION=us-east-1                      # Deployment region
+STACK_PREFIX=workshop                     # Resource prefix
 
-3. **Deploy the complete workshop:**
-   ```bash
-   ./deploy-complete-workshop.sh
-   ```
+# Coveo Configuration
+COVEO_ORG_ID=your-org-id
+COVEO_SEARCH_API_KEY=xx00000000-0000-0000-0000-000000000000
+COVEO_ANSWER_CONFIG_ID=00000000-0000-0000-0000-000000000000
 
-   **Deployment time:** ~8-12 minutes
+# Test User (Optional)
+TEST_USER_EMAIL=workshop-user@example.com
+TEST_USER_PASSWORD=ChangeMe123!
+```
 
-4. **Access your application:**
-   - Frontend URL will be displayed after deployment
-   - Test credentials: `testuser` / `TempPass123!`
+### Step 3: Deploy
+
+```bash
+# One-command deployment
+bash scripts/stacksets/deploy-all-stacksets.sh
+```
+
+**Deployment Time:** 45-60 minutes
+
+**What Gets Deployed:**
+- ✅ Master account setup (ECR, S3, Lambda Layer)
+- ✅ Layer 1 to 10+ accounts (S3, ECR, IAM)
+- ✅ Layer 2 to 10+ accounts (Lambda, API Gateway, Cognito)
+- ✅ Layer 3 to 10+ accounts (AgentCore Runtimes)
+- ✅ Layer 4 to 10+ accounts (App Runner UI)
+- ✅ Observability (X-Ray, CloudWatch, Bedrock logging)
+- ✅ Post-deployment configuration
+
+### Step 4: Access Application
+
+After deployment completes, you'll see:
+
+```
+========================================
+DEPLOYMENT COMPLETE!
+========================================
+
+Deployment Information:
+  Account: 123456789012
+  Region: us-east-1
+  UI URL: https://xxxxx.us-east-1.awsapprunner.com
+  API URL: https://xxxxx.execute-api.us-east-1.amazonaws.com
+
+Test Credentials:
+  Email: workshop-user@example.com
+  Password: ChangeMe123!
+
+Next Steps:
+  1. Open the UI URL in your browser
+  2. Login with test credentials
+  3. Try searching for "cryptocurrency" or "travel safety"
+```
+
+---
+
 
 ## 📁 Project Structure
 
 ```
-Workshop-Full/
-├── 📁 cfn/                          # CloudFormation Infrastructure as Code
-│   ├── master.yml                   # Main orchestration template
-│   ├── shared-core.yml              # Core infrastructure (API Gateway, Lambda)
-│   ├── shared-core-apprunner.yml    # App Runner specific resources
-│   ├── auth-cognito.yml             # Cognito User Pool & authentication
-│   ├── bedrock-agent.yml            # Bedrock Agent configuration
-│   ├── agentcore-runtime.yml        # AgentCore Runtime deployment
-│   └── ui-apprunner.yml             # App Runner UI deployment
+aws-coveo-workshop/
+├── 📁 cfn/                                    # CloudFormation Templates
+│   └── 📁 stacksets/                          # StackSet Templates
+│       ├── stackset-1-prerequisites.yml       # Layer 1: S3, ECR, IAM
+│       ├── stackset-2-core.yml                # Layer 2: Lambda, API Gateway
+│       ├── stackset-3-ai-services.yml         # Layer 3: AgentCore Runtimes
+│       └── stackset-4-ui.yml                  # Layer 4: App Runner UI
 │
-├── 📁 frontend/                     # React UI + Express BFF
-│   ├── 📁 client/                   # React application
+├── 📁 scripts/stacksets/                      # Deployment Scripts
+│   ├── config.sh                              # Configuration loader
+│   ├── deploy-all-stacksets.sh               # ⭐ Main deployment script
+│   ├── destroy-all-stacksets-v2.sh           # Complete cleanup
+│   │
+│   ├── 01-setup-master-ecr.sh                # Setup master ECR
+│   ├── 02-build-push-mcp-image.sh            # Build MCP Server image
+│   ├── 02b-build-push-agent-image.sh         # Build Agent image
+│   ├── 03-build-push-ui-image.sh             # Build UI image
+│   ├── 04-create-shared-lambda-layer.sh      # Create Lambda Layer
+│   ├── 05-package-lambdas.sh                 # Package Lambda functions
+│   ├── 06-setup-s3-replication-v2.sh         # Setup S3 replication
+│   ├── 07-seed-ssm-parameters.sh             # Seed SSM parameters
+│   │
+│   ├── 10-deploy-layer1-prerequisites.sh     # Deploy Layer 1
+│   ├── 11-deploy-layer2-core.sh              # Deploy Layer 2
+│   ├── 12-deploy-layer3-ai-services.sh       # Deploy Layer 3
+│   ├── 12b-seed-agent-ssm-parameters.sh      # Seed Agent SSM params
+│   ├── 13-deploy-layer4-ui.sh                # Deploy Layer 4
+│   ├── 14-post-deployment-config.sh          # Post-deployment config
+│   │
+│   ├── enable-bedrock-model-invocation-logging.sh  # Bedrock logging
+│   ├── enable-xray-cloudwatch-ingestion.sh   # X-Ray span ingestion
+│   ├── test-observability.sh                 # Test observability
+│   │
+│   ├── force-lambda-resync.sh                # Force Lambda re-upload
+│   ├── test-active-replication.sh            # Test S3 replication
+│   ├── update-ecr-repo-policy.sh             # Update ECR policies
+│   └── fix-lambda-layer-permissions.sh       # Fix layer permissions
+│
+├── 📁 coveo-agent/                            # AgentCore Agent
+│   ├── app.py                                 # Main agent application
+│   ├── mcp_adapter.py                         # MCP client adapter
+│   ├── sigv4_transport.py                     # AWS SigV4 auth
+│   ├── Dockerfile                             # Agent container
+│   └── requirements.txt                       # Python dependencies
+│
+├── 📁 coveo-mcp-server/                       # MCP Server
+│   ├── app.py                                 # MCP server application
+│   ├── coveo_tools.py                         # Coveo API tools
+│   ├── Dockerfile                             # MCP container
+│   └── requirements.txt                       # Python dependencies
+│
+├── 📁 frontend/                               # React UI + Express BFF
+│   ├── 📁 client/                             # React application
 │   │   ├── 📁 src/
-│   │   │   ├── 📁 components/       # React components
-│   │   │   │   ├── SearchHeader.js  # Search bar with clear button
-│   │   │   │   ├── SearchResults.js # Results display
-│   │   │   │   ├── Sidebar.js       # Scrollable facet filters
-│   │   │   │   ├── AuthProvider.js  # Cognito auth context
-│   │   │   │   ├── LoginButton.js   # Authentication UI
-│   │   │   │   ├── QuickViewModal.js# Document preview
-│   │   │   │   └── ChatBot.js       # Chat interface
-│   │   │   ├── 📁 services/
-│   │   │   │   └── api.js           # API client
-│   │   │   ├── App.js               # Main app component
-│   │   │   ├── index.js             # React entry point
-│   │   │   └── index.css            # Global styles
-│   │   ├── 📁 public/               # Static assets
-│   │   └── package.json             # React dependencies
-│   ├── server.js                    # Express BFF server
-│   ├── package.json                 # BFF dependencies
-│   ├── Dockerfile                   # Multi-stage Docker build
-│   └── README.md                    # Frontend documentation
+│   │   │   ├── 📁 components/                 # React components
+│   │   │   ├── 📁 services/                   # API client
+│   │   │   ├── App.js                         # Main app
+│   │   │   └── index.js                       # Entry point
+│   │   └── package.json                       # React dependencies
+│   ├── server.js                              # Express BFF
+│   ├── Dockerfile                             # Multi-stage build
+│   └── package.json                           # BFF dependencies
 │
-├── 📁 lambdas/                      # AWS Lambda Functions
-│   ├── 📁 search_proxy/             # Coveo search integration
-│   ├── 📁 passages_proxy/           # Coveo passages retrieval
-│   ├── 📁 answering_proxy/          # Coveo answering API
-│   ├── 📁 query_suggest_proxy/      # Query suggestions
-│   ├── 📁 html_proxy/               # HTML content proxy
-│   ├── 📁 agentcore_runtime_py/     # AgentCore runtime handler
-│   ├── 📁 bedrock_agent_chat/       # Bedrock Agent integration
-│   └── 📁 coveo_passage_tool_py/    # Bedrock Agent tool
+├── 📁 lambdas/                                # Lambda Functions
+│   ├── 📁 agentcore_runtime_py/               # AgentCore handler
+│   ├── 📁 search_proxy/                       # Coveo search
+│   ├── 📁 passages_proxy/                     # Coveo passages
+│   ├── 📁 answering_proxy/                    # Coveo answering
+│   └── 📁 query_suggest_proxy/                # Query suggestions
 │
-├── 📁 coveo-agent/                  # AgentCore Agent Application
-│   ├── app.py                       # Main agent application
-│   ├── mcp_adapter.py               # MCP client adapter
-│   ├── sigv4_transport.py           # AWS SigV4 authentication
-│   ├── agent-template.yaml          # AgentCore deployment config
-│   ├── requirements.txt             # Python dependencies
-│   └── Dockerfile                   # Agent container image
+├── 📁 config/                                 # Configuration
+│   ├── env.py                                 # Python env loader
+│   └── env.schema.json                        # Environment schema
 │
-├── 📁 coveo-mcp-server/             # MCP Server Application
-│   ├── app.py                       # Main MCP server application
-│   ├── coveo_tools.py               # Coveo API tool implementations
-│   ├── mcp-server-template.yaml     # CloudFormation deployment config
-│   ├── requirements.txt             # Python dependencies
-│   └── Dockerfile                   # MCP server container image
+├── 📁 docs/                                   # Documentation
+│   ├── SETUP_GUIDE.md                         # Setup instructions
+│   ├── GITHUB_SECURITY_AUDIT.md               # Security audit
+│   ├── PARAMETERIZATION_COMPLETE.md           # Config guide
+│   └── BEDROCK_MODEL_ID_FORMAT.md             # Model ID reference
 │
-├── 📁 scripts/                      # Deployment Scripts
-│   ├── deploy-complete-workshop.sh  # ⭐ One-click complete deployment
-│   ├── deploy-main-infra.sh         # Core infrastructure
-│   ├── deploy-mcp.sh                # MCP server deployment
-│   ├── deploy-agent.sh              # AgentCore agent deployment
-│   ├── deploy-ui-apprunner.sh       # UI to App Runner
-│   ├── configure-cognito.sh         # Cognito authentication setup
-│   ├── validate-before-deploy.sh    # Prerequisites check
-│   ├── package-lambdas.sh           # Lambda packaging
-│   ├── seed-ssm-secrets.sh          # SSM parameter seeding
-│   ├── show-deployment-info.sh      # Display deployment info
-│   └── destroy.sh                   # Complete cleanup
-│
-├── 📁 config/                       # Configuration
-│   ├── env.py                       # Python env loader
-│   └── env.schema.json              # Environment schema
-│
-├── 📁 docs/                         # Documentation
-│   └── [other documentation files]
-│
-├── 📁 archive/                      # Archived/old files
-├── .env                             # Environment variables (not in git)
-├── .env.example                     # Example environment file
-├── .env.template                    # Environment template
-├── .gitignore                       # Git ignore rules
-├── .dockerignore                    # Docker ignore rules
-├── LICENSE                          # MIT License
-└── README.md                        # This file
+├── .env.stacksets.example                     # Config template
+├── .env.stacksets                             # Your config (gitignored)
+├── .gitignore                                 # Git ignore rules
+├── LICENSE                                    # MIT License
+└── README.md                                  # This file
 ```
 
-## 🛠️ Deployment Options
-
-### Option 1: Complete One-Click Deployment (Recommended)
-
-```bash
-# Deploy everything with one command
-./deploy-complete-workshop.sh
-```
-
-**What it deploys:**
-- ✅ AWS infrastructure (CloudFormation)
-- ✅ Lambda functions and API Gateway
-- ✅ Cognito authentication
-- ✅ MCP Server (local Docker build → ECR → AgentCore Runtime)
-- ✅ Agent Runtime (orchestrator for MCP tools)
-- ✅ UI deployment to App Runner
-- ✅ Test user creation and Cognito configuration
-- ✅ Complete end-to-end setup
-
-### Option 2: Step-by-Step Deployment
-
-```bash
-# 1. Validate prerequisites
-bash scripts/validate-before-deploy.sh
-
-# 2. Deploy complete workshop (recommended)
-bash scripts/deploy-complete-workshop.sh
-
-# OR deploy components individually:
-
-# 2a. Deploy core infrastructure
-./scripts/deploy-main-infra.sh --region us-east-1
-
-# 2b. Deploy MCP server
-./scripts/deploy-mcp.sh
-
-# 2c. Deploy Agent runtime
-./scripts/deploy-agent.sh
-
-# 2d. Deploy UI
-./scripts/deploy-ui-apprunner.sh --region us-east-1
-
-# 2e. Configure Cognito authentication
-./scripts/configure-cognito.sh --region us-east-1
-```
-
-### Option 3: Cognito Configuration Only
-
-If you need to update Cognito settings after deployment:
-
-```bash
-# Configure Cognito callback URLs and test user
-bash scripts/configure-cognito.sh
-
-# With custom test user credentials
-TEST_USER_EMAIL="myuser@example.com" TEST_USER_PASSWORD="MyPassword123!" \
-bash scripts/configure-cognito.sh
-```
-
-### Option 4: Development Mode
-
-```bash
-# Deploy infrastructure only
-./scripts/deploy-main-infra.sh --region us-east-1
-
-# Run UI locally
-cd frontend
-npm install
-npm start
-```
-
-### MCP Server Development
-
-For MCP server development and testing:
-
-```bash
-# Deploy MCP server with local changes
-./scripts/deploy-mcp.sh
-
-# The script will:
-# 1. Build Docker image locally from coveo-mcp-server/
-# 2. Push to ECR repository
-# 3. Deploy to AgentCore Runtime
-# 4. Update CloudFormation stack
-
-# Test MCP server deployment
-./scripts/deploy-agent.sh  # Deploy agent that uses MCP server
-```
-
-## 🧪 Testing the Workshop
-
-### 1. Authentication Test
-```bash
-# Test API Gateway health endpoint
-curl -X GET https://your-api-gateway-url/health
-```
-
-### 2. Search API Test
-```bash
-# Test search across Wikipedia, FDIC, investor.gov, CFPB, CDC content
-curl -X POST "https://your-api-gateway-url/api/search" \
-  -H "Authorization: Bearer your-jwt-token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "what is cryptocurrency",
-    "backendMode": "coveo",
-    "numberOfResults": 10
-  }'
-```
-
-### 3. Answering API Test
-```bash
-# Test AI answering from financial and health knowledge sources
-curl -X POST "https://your-api-gateway-url/api/answer" \
-  -H "Authorization: Bearer your-jwt-token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "How does FDIC insurance protect my bank deposits?",
-    "backendMode": "coveo"
-  }'
-```
-
-### 4. Passages API Test
-```bash
-# Test passage retrieval from indexed content
-curl -X POST "https://your-api-gateway-url/api/passages" \
-  -H "Authorization: Bearer your-jwt-token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "travel safety tips",
-    "backendMode": "coveo",
-    "numberOfPassages": 5
-  }'
-```
-
-### 5. Multi-turn Conversation Test
-```bash
-# Test Bedrock Agent with AgentCore Runtime
-curl -X POST "https://your-api-gateway-url/api/chat" \
-  -H "Authorization: Bearer your-jwt-token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "What are the benefits of diversifying investments?",
-    "backendMode": "bedrockAgent",
-    "sessionId": "test-session-123"
-  }'
-```
-
-### Example Queries for Testing
-
-**Financial Topics** (from FDIC, investor.gov, CFPB):
-- "What is compound interest?"
-- "How does FDIC insurance work?"
-- "What are the risks of investing in stocks?"
-- "How to protect against identity theft?"
-
-**Travel Topics** (from Wikivoyage, CDC):
-- "Best time to visit Paris"
-- "Travel safety tips for Europe"
-- "Required vaccinations for international travel"
-- "How to exchange currency abroad"
-
-**General Knowledge** (from Wikipedia, Wikibooks):
-- "What is blockchain technology?"
-- "History of the Federal Reserve"
-- "How does encryption work?"
-- "What is machine learning?"
-
-## 📚 Content Sources
-
-The workshop indexes and searches content from multiple authoritative sources:
-
-**Financial & Investment Knowledge:**
-- 💰 **FDIC** (Federal Deposit Insurance Corporation) - Banking and deposit insurance information
-- 📈 **Investor.gov** - SEC investor education and protection resources
-- 🏦 **CFPB** (Consumer Financial Protection Bureau) - Consumer finance guidance
-
-**Travel & Health:**
-- ✈️ **Wikivoyage** - Comprehensive travel guides and destination information
-- 🏥 **CDC** (Centers for Disease Control) - Health and travel safety guidelines
-
-**General Knowledge:**
-- 📚 **Wikipedia** - Comprehensive encyclopedia covering all topics
-- 📖 **Wikibooks** - Educational textbooks and learning materials
-- 📰 **Wikinews** - Current events and news articles
-- 💬 **Wikiquote** - Notable quotations and sayings
-
-### Search Capabilities
-
-- **Full-text search** across all indexed content sources
-- **Faceted navigation** by source (project) and document type
-- **AI-powered answering** with citations from authoritative sources
-- **Passage retrieval** for relevant excerpts and context
-- **Multi-turn conversations** for complex, follow-up queries
-- **Query suggestions** for improved search experience
-
-## 🎨 Frontend Features
-
-### React Components
-
-- **AuthProvider** - Cognito authentication context
-- **LoginButton** - Authentication UI component
-- **SearchHeader** - Search bar with centered clear button
-- **SearchResults** - Results display with load more functionality
-- **Sidebar** - Scrollable facet filters (Project, Document Type, etc.)
-- **QuickViewModal** - Document preview modal
-- **ChatBot** - Multi-turn conversation UI
-- **BackendSelector** - Switch between different AI modes
-
-### Key Features
-
-- 🔐 **JWT Authentication** with Cognito
-- � **Realo-time Search** across Wikipedia, FDIC, investor.gov, CFPB, CDC, Wikivoyage
-- 📊 **Facet Filters** - Filter by project (Wikipedia, Wikivoyage, etc.) and document type
-- 💬 **AI Answering** with citations from authoritative sources
-- 🎯 **Multiple Backend Modes** - Coveo, BedrockAgent, CoveoMCP
-- 📱 **Responsive Design** for mobile and desktop
-- ⚡ **Load More** functionality for browsing large result sets
-- ✨ **Quick View** modal for document preview
-
-## 🔧 Backend Architecture
-
-### AWS Lambda Functions
-
-| Function | Purpose | Integration |
-|----------|---------|-------------|
-| `search_proxy` | Search across content sources | Coveo Search API |
-| `passages_proxy` | Retrieve relevant passages | Coveo Passages API |
-| `answering_proxy` | AI-powered answering | Coveo Answering API |
-| `query_suggest_proxy` | Query suggestions | Coveo Query Suggest API |
-| `html_proxy` | HTML content retrieval | Coveo HTML API |
-| `agentcore_runtime_py` | AgentCore runtime handler | AgentCore Runtime |
-| `bedrock_agent_chat` | Multi-turn conversations | Bedrock Agent |
-| `coveo_passage_tool_py` | Bedrock Agent tool | Coveo API |
-
-### API Gateway Routes
-
-```
-GET  /health                    # Health check endpoint
-POST /api/search                # Search across all content sources
-POST /api/passages              # Retrieve relevant passages
-POST /api/answer                # AI-powered answering with citations
-POST /api/chat                  # Multi-turn conversation
-POST /api/suggest               # Query suggestions
-```
-
-### Authentication Flow
-
-1. User authenticates with Cognito
-2. Receives JWT token
-3. Token validated by API Gateway
-4. Lambda functions access Coveo APIs
-5. Responses streamed back to UI
-
-## 🔒 Security Features
-
-- **JWT Authentication** with Cognito User Pools
-- **API Gateway Authorization** with JWT validation
-- **IAM Roles** with least privilege access
-- **Permission Boundaries** for enhanced security
-- **SSM Parameter Store** for API key and configuration storage
-- **VPC Endpoints** for secure AWS service communication
-
-## 📊 Monitoring and Observability
-
-### CloudWatch Integration
-
-- **Lambda Metrics** - Invocation count, duration, errors
-- **API Gateway Metrics** - Request count, latency, 4xx/5xx errors
-- **Custom Metrics** - Search queries, AI responses, user sessions
-
-### Logging
-
-- **Structured Logging** in all Lambda functions
-- **Request/Response Logging** for debugging
-- **Error Tracking** with detailed stack traces
-- **Performance Monitoring** for optimization
-
-### Dashboards
-
-```bash
-# View CloudWatch logs
-aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/coveo-workshop"
-
-# Monitor API Gateway
-aws apigateway get-rest-apis --query "items[?name=='coveo-workshop-api']"
-```
-
-## 🧹 Cleanup
-
-### Complete Cleanup
-
-```bash
-# Remove all workshop resources
-./scripts/destroy.sh --region us-east-1 --confirm
-```
-
-**What gets cleaned up:**
-- ✅ CloudFormation stacks (parallel deletion)
-- ✅ S3 buckets and all contents
-- ✅ Lambda functions and layers
-- ✅ API Gateway and routes
-- ✅ Cognito User Pool and users
-- ✅ IAM roles and policies
-- ✅ SSM parameters
-- ✅ App Runner services
-- ✅ AgentCore Runtimes (MCP Server + Agent)
-- ✅ ECR repositories and images
-- ✅ Local build artifacts
-
-**Cleanup time:** ~5-8 minutes (70% faster with parallelization)
-
-### Partial Cleanup
-
-```bash
-# Clean up specific components
-./scripts/destroy.sh --region us-east-1  # Interactive mode
-```
-
-### Fix Failed Deployments
-
-```bash
-# Handle stacks in ROLLBACK_COMPLETE state
-./fix-rollback-stack.sh
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `COVEO_ORG_ID` | Coveo organization ID | ✅ |
-| `COVEO_SEARCH_API_KEY` | Coveo API key with search permissions | ✅ |
-| `COVEO_ANSWER_CONFIG_ID` | Coveo Answer configuration ID | ✅ |
-| `COVEO_PLATFORM_URL` | Coveo platform URL (default: platform.cloud.coveo.com) | ❌ |
-| `COVEO_SEARCH_PIPELINE` | Search pipeline name (default: aws-workshop-pipeline) | ❌ |
-| `COVEO_SEARCH_HUB` | Search hub identifier (default: aws-workshop) | ❌ |
-| `AWS_REGION` | AWS deployment region (default: us-east-1) | ❌ |
-| `API_GATEWAY_URL` | API Gateway URL (auto-populated after deployment) | ❌ |
-| `COGNITO_USER_POOL_ID` | Cognito User Pool ID (auto-populated) | ❌ |
-| `COGNITO_CLIENT_ID` | Cognito Client ID (auto-populated) | ❌ |
-| `TEST_USER_EMAIL` | Test user email for deployment | ❌ |
-| `TEST_USER_PASSWORD` | Test user password for deployment | ❌ |
-| `PORT` | Local development port (default: 3003) | ❌ |
-
-### Fixed Configuration
-
-For consistency and reliability, some values are fixed:
-
-- **Stack Prefix:** `coveo-workshop`
-- **S3 Buckets:** `coveo-workshop-cfn-templates`, `coveo-workshop-ui`
-- **ECR Repositories:** `coveo-workshop-coveo-mcp-server`, `coveo-workshop-ui`
-
-### Customization
-
-To customize the workshop:
-
-1. **Update CloudFormation parameters** in `cfn/master.yml`
-2. **Modify Lambda environment variables** in templates
-3. **Adjust frontend configuration** in `frontend/client/src/config.js`
-4. **Update deployment scripts** for different regions or naming
-
-### Getting Help
-
-1. **Check the logs** in CloudWatch
-2. **Review CloudFormation events** in AWS Console
-3. **Validate prerequisites** with `scripts/validate-before-deploy.sh`
-4. **Check AWS service limits** and quotas
-5. **Verify Coveo API credentials** and permissions
-
-## 📚 Learning Objectives
-
-By completing this workshop, you will learn:
-
-### AWS Serverless Architecture
-- ✅ **Lambda Functions** - Event-driven compute
-- ✅ **API Gateway** - RESTful API management
-- ✅ **Cognito** - User authentication and authorization
-- ✅ **CloudFormation** - Infrastructure as Code
-- ✅ **S3 & CloudFront** - Static website hosting
-- ✅ **App Runner** - Containerized application deployment
-
-### AI and Search Integration
-- ✅ **Coveo Search API** - Enterprise search capabilities
-- ✅ **Coveo Answering API** - AI-powered question answering
-- ✅ **Bedrock Agents** - Multi-turn AI conversations
-- ✅ **AgentCore Tool Calling** - AI agents using external APIs with Coveo MCP Server
-- ✅ **Streaming Responses** - Real-time AI interactions
-
-### Modern Web Development
-- ✅ **React Hooks** - Modern React patterns
-- ✅ **JWT Authentication** - Secure API access
-- ✅ **Server-Sent Events** - Real-time updates
-- ✅ **Responsive Design** - Mobile-first UI
-- ✅ **Error Handling** - Graceful failure management
-
-### DevOps and Deployment
-- ✅ **Infrastructure as Code** - Reproducible deployments
-- ✅ **CI/CD Patterns** - Automated deployment pipelines
-- ✅ **Monitoring and Logging** - Observability best practices
-- ✅ **Security Best Practices** - Least privilege access
-- ✅ **Cost Optimization** - Serverless cost management
-
-## 🎓 Workshop Labs
-
-### Lab 1: Core Infrastructure
-- Deploy AWS serverless infrastructure
-- Configure Cognito authentication
-- Set up API Gateway and Lambda functions
-- Test search, passage retrieval and answer API functionality wth Coveo
-
-### Lab 2: Bedrock Agent Integration
-- Create Bedrock Agent with Coveo tools
-- Implement multi-turn conversations
-- Add memory and context management
-- Test passage retrieval API with Bedrock Model summarization to provided a grounded answer
-- Test complex AI interactions
-
-### Lab 3: AgentCore Gateway
-- Deploy MCP server runtime
-- Configure AgentCore Gateway
-- Implement streaming responses
-- Test Coveo MCP Server for Answer question with tools 
-- Compare different backend modes
-
-### Lab 4: Chatbot For Sumamry and Conversational Flow
-- Test Chatbot for various backend configurations
-- Test Multi Turn Conversations with Bedrock Agent and Agentcore with Coveo MCP tool
-
-
-## 🔄 Architecture Patterns
-
-### 1. Backend for Frontend (BFF)
-```
-React UI ←→ Node.js BFF ←→ AWS API Gateway ←→ Lambda Functions
-```
-
-### 2. Serverless Microservices
-```
-API Gateway ←→ [Search Lambda] ←→ Coveo Search API
-            ←→ [Answer Lambda] ←→ Coveo Answer API
-            ←→ [Agent Lambda]  ←→ Bedrock Agent
-```
-
-### 3. Event-Driven Architecture
-```
-User Action → API Gateway → Lambda → External APIs → Response Stream
-```
-
-### 4. Multi-Modal AI Integration
-```
-User Query → [Route by Intent] → Coveo API (Facts)
-                              → Bedrock Agent (Conversation)
-                              → AgentCore Gateway (MCP)
-```
-
-## 📈 Performance Optimization
-
-### Lambda Optimization
-- **Memory allocation** tuned for each function
-- **Connection pooling** for external APIs
-- **Caching strategies** for frequently accessed data
-- **Cold start mitigation** with provisioned concurrency
-
-### API Gateway Optimization
-- **Response caching** for static content
-- **Request validation** to reduce Lambda invocations
-- **Throttling** to protect backend services
-- **CORS optimization** for browser performance
-
-### Frontend Optimization
-- **Code splitting** for faster initial load
-- **Lazy loading** for components and routes
-- **Service worker** for offline functionality
-- **Bundle optimization** with webpack
-
-## 💰 Cost Optimization
-
-### Serverless Cost Benefits
-- **Pay-per-use** - No idle server costs
-- **Automatic scaling** - No over-provisioning
-- **Managed services** - Reduced operational overhead
-
-### Cost Breakdown (Estimated)
-
-| Service | Monthly Cost | Usage |
-|---------|--------------|-------|
-| Lambda | $5-15 | 100K requests |
-| API Gateway | $3-10 | 100K requests |
-| Cognito | $0-5 | <50K MAU |
-| S3 | $1-3 | Static hosting |
-| App Runner | $10-25 | UI hosting |
-| **Total** | **$19-58** | Workshop usage |
-
-## 🔐 Security Best Practices
-
-### Authentication & Authorization
-- ✅ **JWT tokens** with short expiration
-- ✅ **Cognito User Pools** for user management
-- ✅ **API Gateway authorizers** for request validation
-- ✅ **IAM roles** with least privilege
-
-### Data Protection
-- ✅ **SSM Parameter Store** for API keys and configuration
-- ✅ **Encryption at rest** for S3 and databases
-- ✅ **TLS encryption** for all API communications
-
-
-## 🤝 Contributing
-
-We welcome contributions to improve the workshop!
-
-### Development Setup
-```bash
-# Clone and setup
-git clone <repository-url>
-cd aws-coveo-workshop
-
-# Install dependencies
-npm install
-
-# Run tests
-npm test
-
-# Start development
-npm run dev
-```
-
-### Contribution Guidelines
-1. **Fork the repository**
-2. **Create a feature branch**
-3. **Make your changes**
-4. **Add tests** for new functionality
-5. **Update documentation**
-6. **Submit a pull request**
-
-### Code Standards
-- **ESLint** for JavaScript linting
-- **Prettier** for code formatting
-- **Jest** for unit testing
-- **CloudFormation Linter** for template validation
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-
-## 🚀 Current Status
-
-### ✅ Production Ready Components
-- **Core Infrastructure** - CloudFormation templates tested and deployed
-- **Lambda Functions** - All 8 Lambda functions operational
-- **React UI** - Modern search interface with facet filters
-- **Express BFF** - Backend for Frontend with API routing
-- **Cognito Authentication** - User pool and JWT validation
-- **App Runner Deployment** - Containerized UI deployment
-- **AgentCore Runtime** - Serverless agent execution
-- **MCP Server** - Tool provider with Coveo integration
-
-
-### 📦 Deployment Scripts
-- ✅ `deploy-complete-workshop.sh` - One-click deployment (8-12 minutes)
-- ✅ `destroy.sh` - Complete cleanup (5-8 minutes)
-- ✅ `validate-before-deploy.sh` - Prerequisites validation
-- ✅ All deployment scripts tested on Windows (Git Bash) and Linux
-
-### 🔧 Configuration
-- **Stack Prefix**: `workshop` (fixed for consistency)
-- **AWS Region**: `us-east-1` (default, configurable)
-- **Deployment Method**: CloudFormation + CodeBuild + App Runner
-- **Container Registry**: Amazon ECR
-
-## 📞 Support
-
-For support and questions:
-
-- 📧 **Email:** Contact your workshop instructor
-- 📖 **Documentation:** See `/docs` directory for detailed guides
-- 🐛 **Issues:** Report issues via GitHub Issues
-- 💬 **Discussions:** Use GitHub Discussions for questions
-
-## 🔗 Repository
-
-- **License**: MIT (see LICENSE file)
+### Key Directories
+
+| Directory | Purpose |
+|-----------|---------|
+| `cfn/stacksets/` | CloudFormation StackSet templates for multi-account deployment |
+| `scripts/stacksets/` | Bash scripts for deployment, configuration, and cleanup |
+| `coveo-agent/` | Bedrock AgentCore Agent application (Python) |
+| `coveo-mcp-server/` | MCP Server for tool orchestration (Python) |
+| `frontend/` | React UI with Express BFF (Node.js) |
+| `lambdas/` | AWS Lambda functions (Python) |
+| `docs/` | Comprehensive documentation |
 
 ---
 
-**Happy Learning! 🚀**
 
-Built with ❤️ by the Coveo team.
+## 🔧 Deployment Process
+
+### Complete Deployment Flow
+
+The `deploy-all-stacksets.sh` script orchestrates the entire deployment:
+
+```bash
+bash scripts/stacksets/deploy-all-stacksets.sh
+```
+
+#### Step-by-Step Breakdown
+
+**Step 1: Master Account Setup** (5 minutes)
+```bash
+# Creates ECR repositories in master account
+bash scripts/stacksets/01-setup-master-ecr.sh
+```
+- Creates ECR repositories for MCP Server, Agent, and UI
+- Sets up repository policies for cross-account access
+
+**Step 2: Build Docker Images** (10 minutes)
+```bash
+# Build and push MCP Server image
+bash scripts/stacksets/02-build-push-mcp-image.sh
+
+# Build and push Agent image
+bash scripts/stacksets/02b-build-push-agent-image.sh
+
+# Build and push UI image
+bash scripts/stacksets/03-build-push-ui-image.sh
+```
+- Builds Docker images locally
+- Pushes to master account ECR
+- Tags with `latest` and commit SHA
+
+**Step 3: Create Lambda Layer** (3 minutes)
+```bash
+bash scripts/stacksets/04-create-shared-lambda-layer.sh
+```
+- Installs Python dependencies
+- Creates Lambda Layer in master account
+- Grants permissions to all child accounts
+
+**Step 4: Package Lambda Functions** (2 minutes)
+```bash
+bash scripts/stacksets/05-package-lambdas.sh
+```
+- Packages all Lambda functions
+- Uploads to master S3 bucket
+- Prepares for replication to child accounts
+
+**Step 5: Deploy Layer 1 - Prerequisites** (5 minutes)
+```bash
+bash scripts/stacksets/10-deploy-layer1-prerequisites.sh
+```
+- Creates StackSet for Layer 1
+- Deploys to all accounts in OU
+- Creates S3 buckets, ECR repos, IAM roles
+
+**Step 6: Setup S3 Replication** (15 minutes)
+```bash
+bash scripts/stacksets/06-setup-s3-replication-v2.sh
+```
+- Configures S3 replication from master to child accounts
+- Waits for Lambda packages to replicate
+- Verifies replication with probe file
+
+**Step 7: Seed SSM Parameters** (2 minutes)
+```bash
+bash scripts/stacksets/07-seed-ssm-parameters.sh
+```
+- Creates SSM parameters in all accounts
+- Stores Coveo API keys, configuration
+- Required before Layer 2 deployment
+
+**Step 8: Deploy Layer 2 - Core Infrastructure** (8 minutes)
+```bash
+bash scripts/stacksets/11-deploy-layer2-core.sh
+```
+- Deploys Lambda functions
+- Creates API Gateway
+- Sets up Cognito User Pool
+
+**Step 9: Deploy Layer 3 - AI Services** (10 minutes)
+```bash
+bash scripts/stacksets/12-deploy-layer3-ai-services.sh
+```
+- Deploys AgentCore MCP Runtime
+- Deploys AgentCore Agent Runtime
+- Creates SSM parameters for runtimes
+
+**Step 10: Seed Agent SSM Parameters** (2 minutes)
+```bash
+bash scripts/stacksets/12b-seed-agent-ssm-parameters.sh
+```
+- Creates Agent-specific SSM parameters
+- Stores MCP Runtime ARN, model ID
+
+**Step 11: Enable Bedrock Logging** (3 minutes)
+```bash
+bash scripts/stacksets/enable-bedrock-model-invocation-logging.sh
+```
+- Enables Bedrock model invocation logging
+- Configures CloudWatch Logs destination
+
+**Step 12: Deploy Layer 4 - UI** (8 minutes)
+```bash
+bash scripts/stacksets/13-deploy-layer4-ui.sh
+```
+- Deploys App Runner services
+- Configures auto-scaling
+- Sets up CloudWatch Logs
+
+**Step 13: Enable X-Ray Ingestion** (3 minutes)
+```bash
+bash scripts/stacksets/enable-xray-cloudwatch-ingestion.sh
+```
+- Enables X-Ray span ingestion to CloudWatch
+- Configures sampling rules
+- Sets up log groups
+
+**Step 14: Post-Deployment Configuration** (5 minutes)
+```bash
+bash scripts/stacksets/14-post-deployment-config.sh
+```
+- Creates Cognito test users
+- Configures Cognito callback URLs
+- Collects deployment information
+- Generates CSV with all account details
+
+### Deployment Timeline
+
+```
+Total Time: 45-60 minutes
+
+Master Setup:        ████░░░░░░░░░░░░░░░░  5 min
+Build Images:        ████████████░░░░░░░░ 10 min
+Lambda Layer:        ███░░░░░░░░░░░░░░░░░  3 min
+Package Lambdas:     ██░░░░░░░░░░░░░░░░░░  2 min
+Layer 1 Deploy:      █████░░░░░░░░░░░░░░░  5 min
+S3 Replication:      ███████████████░░░░░ 15 min
+SSM Parameters:      ██░░░░░░░░░░░░░░░░░░  2 min
+Layer 2 Deploy:      ████████░░░░░░░░░░░░  8 min
+Layer 3 Deploy:      ██████████░░░░░░░░░░ 10 min
+Agent SSM:           ██░░░░░░░░░░░░░░░░░░  2 min
+Bedrock Logging:     ███░░░░░░░░░░░░░░░░░  3 min
+Layer 4 Deploy:      ████████░░░░░░░░░░░░  8 min
+X-Ray Setup:         ███░░░░░░░░░░░░░░░░░  3 min
+Post-Config:         █████░░░░░░░░░░░░░░░  5 min
+```
+
+### Parallel Deployment
+
+The script deploys to multiple accounts in parallel:
+- **StackSet Operations** - Deploys to all accounts simultaneously
+- **Max Concurrent** - 10 accounts at a time (configurable)
+- **Failure Tolerance** - Continues if 5 accounts fail (configurable)
+
+---
+

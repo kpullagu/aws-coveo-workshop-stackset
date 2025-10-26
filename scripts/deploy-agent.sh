@@ -196,11 +196,15 @@ echo ""
 echo "Step 4: Configuring X-Ray for Transaction Search..."
 echo "Enabling CloudWatch Logs as trace segment destination..."
 
+# Temporarily disable exit-on-error for this optional step
+set +e
 aws xray update-trace-segment-destination \
     --destination CloudWatchLogs \
     --region "$REGION" > /dev/null 2>&1
+XRAY_EXIT_CODE=$?
+set -e
 
-if [ $? -eq 0 ]; then
+if [ $XRAY_EXIT_CODE -eq 0 ]; then
     echo "✓ X-Ray configured to use CloudWatch Logs for traces"
     echo "✓ Transaction Search enabled (OTLP API support)"
 else

@@ -26,6 +26,15 @@ import os
 import uuid
 from typing import Dict, Any, Optional
 
+# -------- X-Ray Tracing --------
+try:
+    from aws_xray_sdk.core import xray_recorder, patch_all
+    patch_all()  # Instrument boto3/requests for tracing
+    XRAY_AVAILABLE = True
+except ImportError:
+    XRAY_AVAILABLE = False
+    logging.warning("X-Ray SDK not available, tracing disabled")
+
 # -------- Logging --------
 logger = logging.getLogger()
 logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
@@ -274,9 +283,28 @@ def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str) -> Dict[
         # Extract actor_id (user identifier) for memory
         actor_id = request_data.get('userId', request_data.get('user_id', 'anonymous'))
 
-        # Call Agent Runtime with text + controls + session/actor info for memory
-        agent_client = AgentCoreClient(runtime_arn, session_id=session_id)
-        agent_response = agent_client.ask_agent(prompt, controls=controls, session_id=session_id, actor_id=actor_id)
+        # X-Ray: Create subsegment for Agent invocation with annotations for transaction search
+        if XRAY_AVAILABLE:
+            xray_recorder.begin_subsegment('AgentCore.invoke')
+            try:
+                xray_recorder.put_annotation('backend', backend)
+                xray_recorder.put_annotation('sessionId', session_id)
+                xray_recorder.put_annotation('agentRuntimeArn', runtime_arn)
+                xray_recorder.put_annotation('actorId', actor_id)
+                xray_recorder.put_annotation('conversationType', conversation_type)
+            except Exception as e:
+                logger.warning(f"Failed to add X-Ray annotations: {e}")
+
+        try:
+            # Call Agent Runtime with text + controls + session/actor info for memory
+            agent_client = AgentCoreClient(runtime_arn, session_id=session_id)
+            agent_response = agent_client.ask_agent(prompt, controls=controls, session_id=session_id, actor_id=actor_id)
+        finally:
+            if XRAY_AVAILABLE:
+                try:
+                    xray_recorder.end_subsegment()
+                except Exception:
+                    pass
 
         # Extract answer from Agent response
         answer = ""
