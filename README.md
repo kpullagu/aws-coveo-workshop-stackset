@@ -225,7 +225,7 @@ choco install jq
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/your-org/aws-coveo-workshop.git
+git clone https://github.com/your-org/aws-cove-workshop-stackset.git
 cd aws-coveo-workshop
 ```
 
