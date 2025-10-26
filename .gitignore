@@ -159,6 +159,9 @@ scripts/show-deployment-info.sh
 config/env.py
 config/env.schema.json
 
+# Kiro IDE specs (development artifacts)
+.kiro/specs/
+
 # Note: To remove these files from your repository:
 # 1. Review the list above
 # 2. Run: git rm -r cfn/master.yml cfn/shared-core.yml ... (etc)

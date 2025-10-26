@@ -348,12 +348,14 @@ aws-coveo-workshop/
 │   ├── app.py                                 # Main agent application
 │   ├── mcp_adapter.py                         # MCP client adapter
 │   ├── sigv4_transport.py                     # AWS SigV4 auth
+│   ├── agent-template.yaml                    # AgentCore deployment config
 │   ├── Dockerfile                             # Agent container
 │   └── requirements.txt                       # Python dependencies
 │
 ├── 📁 coveo-mcp-server/                       # MCP Server
-│   ├── app.py                                 # MCP server application
-│   ├── coveo_tools.py                         # Coveo API tools
+│   ├── mcp_server.py                          # MCP server application
+│   ├── coveo_api.py                           # Coveo API integration
+│   ├── mcp-server-template.yaml               # CloudFormation template
 │   ├── Dockerfile                             # MCP container
 │   └── requirements.txt                       # Python dependencies
 │
@@ -374,23 +376,31 @@ aws-coveo-workshop/
 │   ├── 📁 search_proxy/                       # Coveo search
 │   ├── 📁 passages_proxy/                     # Coveo passages
 │   ├── 📁 answering_proxy/                    # Coveo answering
-│   └── 📁 query_suggest_proxy/                # Query suggestions
+│   ├── 📁 query_suggest_proxy/                # Query suggestions
+│   ├── 📁 html_proxy/                         # HTML content proxy
+│   ├── 📁 bedrock_agent_chat/                 # Bedrock Agent chat
+│   └── 📁 coveo_passage_tool_py/              # Bedrock Agent tool
 │
 ├── 📁 config/                                 # Configuration
 │   ├── env.py                                 # Python env loader
 │   └── env.schema.json                        # Environment schema
 │
-├── 📁 docs/                                   # Documentation
-│   ├── SETUP_GUIDE.md                         # Setup instructions
-│   ├── GITHUB_SECURITY_AUDIT.md               # Security audit
-│   ├── PARAMETERIZATION_COMPLETE.md           # Config guide
-│   └── BEDROCK_MODEL_ID_FORMAT.md             # Model ID reference
+├── 📁 Instructor/                             # Instructor materials (gitignored)
+├── 📁 Lab1/                                   # Lab 1 materials (gitignored)
+├── 📁 Lab2/                                   # Lab 2 materials (gitignored)
+├── 📁 Lab3/                                   # Lab 3 materials (gitignored)
+├── 📁 Lab4/                                   # Lab 4 materials (gitignored)
 │
-├── .env.stacksets.example                     # Config template
-├── .env.stacksets                             # Your config (gitignored)
+├── .dockerignore                              # Docker ignore rules
+├── .env.stacksets.example                     # Config template ✅ COMMIT
+├── .env.stacksets                             # Your config ❌ GITIGNORED
+├── .env.example                               # Frontend config template ✅ COMMIT
+├── .env.template                              # Environment template
+├── .env                                       # Frontend config ❌ GITIGNORED
 ├── .gitignore                                 # Git ignore rules
 ├── LICENSE                                    # MIT License
-└── README.md                                  # This file
+├── README.md                                  # This file
+└── SETUP_GUIDE.md                             # Setup instructions
 ```
 
 ### Key Directories
