@@ -225,7 +225,7 @@ choco install jq
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/your-org/aws-coveo-workshop.git
+git clone https://github.com/your-org/aws-cove-workshop-stackset.git
 cd aws-coveo-workshop
 ```
 
@@ -385,11 +385,6 @@ aws-coveo-workshop/
 │   ├── env.py                                 # Python env loader
 │   └── env.schema.json                        # Environment schema
 │
-├── 📁 Instructor/                             # Instructor materials (gitignored)
-├── 📁 Lab1/                                   # Lab 1 materials (gitignored)
-├── 📁 Lab2/                                   # Lab 2 materials (gitignored)
-├── 📁 Lab3/                                   # Lab 3 materials (gitignored)
-├── 📁 Lab4/                                   # Lab 4 materials (gitignored)
 │
 ├── .dockerignore                              # Docker ignore rules
 ├── .env.stacksets.example                     # Config template ✅ COMMIT
