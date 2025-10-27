@@ -9,7 +9,6 @@ import { chatAPI } from '../services/api';
 const getProjectColor = (project) => {
   const colors = {
     wikipedia: '#0066cc',
-    wikivoyage: '#00af89',
     wikibooks: '#ff6600',
     wikinews: '#cc0000',
     wikiquote: '#9966cc',
@@ -532,6 +531,11 @@ const ChatBot = ({ isOpen, onToggle, backendMode, sessionId }) => {
       inputRef.current.focus();
     }
   }, [isOpen]);
+
+  // Update currentSessionId when sessionId prop changes (backend switch)
+  useEffect(() => {
+    setCurrentSessionId(sessionId);
+  }, [sessionId]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isTyping) return;

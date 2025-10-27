@@ -9,10 +9,30 @@ const SidebarContainer = styled(motion.aside)`
   backdrop-filter: blur(20px);
   border-radius: 16px;
   padding: 24px;
-  height: fit-content;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
   position: sticky;
   top: 120px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  
+  /* Custom scrollbar styling */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: rgba(241, 241, 241, 0.5);
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  }
 `;
 
 const SidebarHeader = styled.div`

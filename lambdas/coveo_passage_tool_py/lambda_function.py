@@ -2,17 +2,20 @@
 Bedrock Agent Lambda Tool for Coveo Passage Retrieval.
 
 This Lambda function is designed to be used as a Bedrock Agent action group tool.
-It retrieves relevant passages from the Finance & Travel Knowledge Hub to ground the Agent's responses.
+It retrieves relevant passages from the Finance Knowledge Hub to ground the Agent's responses.
 
 Knowledge Base Content:
+    - Wikipedia: General financial knowledge and concepts
     - Investor.gov: Investment basics, alerts, financial tools, and glossary
+    - IRS: Tax information and regulations
+    - NCUA: Credit union information and consumer protection
+    - FinCEN: Financial crimes enforcement and anti-money laundering
     - Consumer Financial Protection Bureau (CFPB): Consumer finance topics and regulations
     - FDIC: Banking protection and consumer resources
-    - CDC Travel: Country health information and travel guides
-    - State Department: Travel advisories and country information
-    - TSA: Travel security and prohibited items
-    - FAA: Aviation and traveler information
-    - UK Government: Financial services and travel advice
+    - Federal Reserve Board (FRB): Monetary policy and banking regulations
+    - Office of the Comptroller of the Currency (OCC): National bank supervision
+    - MyMoney.gov: Financial literacy and education resources
+    - Federal Trade Commission (FTC): Consumer protection and fraud prevention
 
 Event Format (Bedrock Agent Function Details):
     {
@@ -308,7 +311,7 @@ def retrieve_passages(query: str, k: int, config: Dict[str, str]) -> List[Dict[s
 
 # For local testing
 if __name__ == '__main__':
-    # Mock Bedrock Agent event with Finance & Travel knowledge base query
+    # Mock Bedrock Agent event with Finance knowledge base query
     test_event = {
         'messageVersion': '1.0',
         'agent': {

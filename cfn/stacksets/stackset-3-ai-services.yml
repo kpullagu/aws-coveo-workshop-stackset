@@ -14,7 +14,7 @@ Parameters:
   
   BedrockFoundationModel:
     Type: String
-    Default: 'us.amazon.nova-lite-v1:0'
+    Default: 'amazon.nova-lite-v1:0'
     Description: Bedrock foundation model ID (cross-region inference profile)
   
   MasterAccountId:
@@ -74,11 +74,11 @@ Resources:
     Type: AWS::Bedrock::Agent
     Properties:
       AgentName: !Sub '${StackPrefix}-coveo-agent'
-      Description: 'Bedrock Agent with Coveo Passage Retrieval for Finance & Travel Knowledge Hub'
+      Description: 'Bedrock Agent with Coveo Passage Retrieval for Finance Knowledge Hub'
       AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
       FoundationModel: !Ref BedrockFoundationModel
       Instruction: |
-        You are the Finance & Travel Knowledge Assistant, providing accurate information from authoritative government and educational sources.
+        You are the Finance Knowledge Assistant, providing accurate information from authoritative government and educational sources about financial topics.
         
         ## Core Principles
         
@@ -108,13 +108,13 @@ Resources:
       AutoPrepare: true
       ActionGroups:
         - ActionGroupName: CoveoPassageRetrieval
-          Description: 'Retrieve relevant passages from Finance & Travel knowledge base'
+          Description: 'Retrieve relevant passages from Finance knowledge base'
           ActionGroupExecutor:
             Lambda: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackPrefix}-passage-tool'
           FunctionSchema:
             Functions:
               - Name: retrieve_passages
-                Description: 'Search for relevant text passages in the finance and travel knowledge base using semantic search'
+                Description: 'Search for relevant text passages in the finance knowledge base using semantic search'
                 Parameters:
                   query:
                     Description: 'The search query or question to find relevant passages for'

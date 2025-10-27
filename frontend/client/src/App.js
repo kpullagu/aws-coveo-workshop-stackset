@@ -116,7 +116,11 @@ function AuthenticatedApp() {
   const [backendMode, setBackendMode] = useState('coveo');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [sessionId] = useState(uuidv4());
+  const [sessionIds, setSessionIds] = useState({
+    coveo: null, // Coveo doesn't use session IDs (single-turn)
+    bedrockAgent: uuidv4(),
+    coveoMCP: uuidv4()
+  });
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -128,12 +132,12 @@ function AuthenticatedApp() {
     const loadInitialData = async () => {
       console.log('🚀 Loading initial data for authenticated user...');
       setInitialLoading(true);
-      
+
       // Clear all existing results when backend changes
       setAnswer(null);
       setPassages(null);
       setSearchQuery('');
-      
+
       try {
         // Load initial data with empty query to get all results and facets
         console.log('📤 Calling searchAPI with empty query...');
@@ -173,10 +177,10 @@ function AuthenticatedApp() {
     try {
       // Sequential API calls for proper section display
       console.log('🔍 Starting search for:', query);
-      
+
       // 1. Get search results first (always needed)
       const searchResponse = await searchAPI(query, selectedFacets, backendMode, 20, 0);
-      
+
       // If no results, get facets from a broader search to keep them visible
       if (searchResponse.results.length === 0 && searchResponse.facets.length === 0) {
         console.log('⚠️ No results found, getting facets from broader search...');
@@ -187,7 +191,7 @@ function AuthenticatedApp() {
           console.error('Failed to get fallback facets:', error);
         }
       }
-      
+
       setSearchResults(searchResponse);
       console.log('✅ Search results loaded');
 
@@ -200,7 +204,7 @@ function AuthenticatedApp() {
           hasCitations: !!(answerResponse.citations && answerResponse.citations.length > 0),
           citationsCount: answerResponse.citations?.length || 0
         });
-        
+
         // Set answer if we have valid content, otherwise set empty object to trigger fallback
         if (answerResponse && (answerResponse.answer || answerResponse.answerText || answerResponse.response)) {
           setAnswer(answerResponse);
@@ -234,11 +238,11 @@ function AuthenticatedApp() {
 
   const handleFacetChange = (field, value, isSelected) => {
     const newFacets = { ...facets };
-    
+
     if (!newFacets[field]) {
       newFacets[field] = [];
     }
-    
+
     if (isSelected) {
       if (!newFacets[field].includes(value)) {
         newFacets[field].push(value);
@@ -249,9 +253,9 @@ function AuthenticatedApp() {
         delete newFacets[field];
       }
     }
-    
+
     setFacets(newFacets);
-    
+
     // Apply filters to current search or initial data
     if (searchQuery) {
       handleSearch(searchQuery, newFacets);
@@ -267,7 +271,7 @@ function AuthenticatedApp() {
     setPassages(null);
     setAnswer(null);
     setFacets({});
-    
+
     // Load initial data with all facets and results
     try {
       const response = await searchAPI('', {}, backendMode, 20, 0);
@@ -281,7 +285,7 @@ function AuthenticatedApp() {
   const handleClearFilters = async () => {
     console.log('🧹 Clearing all filters...', 'Current facets:', facets);
     setFacets({});
-    
+
     // Reload data without filters
     if (searchQuery) {
       console.log('🔄 Reloading search with cleared filters');
@@ -301,17 +305,17 @@ function AuthenticatedApp() {
     try {
       const currentResultsCount = searchResults.results.length;
       const query = searchQuery || '';
-      
+
       console.log(`📄 Loading more results... Current: ${currentResultsCount}`);
-      
+
       const moreResults = await searchAPI(query, facets, backendMode, 20, currentResultsCount);
-      
+
       // Append new results to existing ones
       setSearchResults(prev => ({
         ...prev,
         results: [...prev.results, ...moreResults.results]
       }));
-      
+
       console.log(`✅ Loaded ${moreResults.results.length} more results`);
     } catch (error) {
       console.error('❌ Failed to load more results:', error);
@@ -329,7 +333,7 @@ function AuthenticatedApp() {
         searchQuery={searchQuery}
         onClearSearch={clearSearch}
       />
-      
+
       <MainContent>
         <Sidebar
           facets={searchResults?.facets || []}
@@ -338,7 +342,7 @@ function AuthenticatedApp() {
           onClearFilters={handleClearFilters}
           totalResults={searchResults?.totalCount || 0}
         />
-        
+
         <ContentArea>
           <SearchResults
             query={searchQuery}
@@ -357,7 +361,7 @@ function AuthenticatedApp() {
         isOpen={isChatOpen}
         onToggle={() => setIsChatOpen(!isChatOpen)}
         backendMode={backendMode}
-        sessionId={sessionId}
+        sessionId={sessionIds[backendMode]}
       />
 
       <AnimatePresence>
@@ -401,9 +405,9 @@ function AppContent() {
   if (!isAuthenticated()) {
     return (
       <LoginScreen>
-        <LoginTitle>Finance & Travel Knowledge Hub</LoginTitle>
+        <LoginTitle>Coveo Workshop Knowledge Explorer</LoginTitle>
         <LoginSubtitle>
-          Coveo-powered answers from Wikipedia, Investor.gov, CFPB, CDC, and more. Please login to access the search interface and explore our three different backend modes: Coveo, BedrockAgent, and CoveoMCP.
+          AI-powered financial knowledge from Wikipedia, Investor.gov, IRS, NCUA, FinCEN, CFPB, FDIC, FRB, OCC, MyMoney, and FTC. Please login to access the search interface and explore our three different backend modes: Coveo, Bedrock Agent, and Coveo MCP Server.
         </LoginSubtitle>
         <LoginButtonStyled onClick={login}>
           Login to Continue

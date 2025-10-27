@@ -297,7 +297,7 @@ Test Credentials:
 Next Steps:
   1. Open the UI URL in your browser
   2. Login with test credentials
-  3. Try searching for "cryptocurrency" or "travel safety"
+  3. Try searching for "cryptocurrency" or "retirement accounts"
 ```
 
 ---

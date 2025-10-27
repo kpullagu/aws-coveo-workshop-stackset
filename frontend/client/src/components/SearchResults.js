@@ -589,7 +589,6 @@ const LoadingSpinner = styled.div`
 const getProjectColor = (project) => {
   const colors = {
     wikipedia: '#0066cc',
-    wikivoyage: '#00af89',
     wikibooks: '#ff6600',
     wikinews: '#cc0000',
     wikiquote: '#9966cc',
@@ -681,9 +680,9 @@ const SearchResults = ({ query, answer, passages, searchResults, backendMode, on
           transition={{ duration: 0.6 }}
         >
           <EmptyState>
-            <EmptyStateTitle>Welcome to Finance & Travel Knowledge Hub</EmptyStateTitle>
+            <EmptyStateTitle>Welcome to Coveo Workshop Knowledge Explorer</EmptyStateTitle>
             <EmptyStateText>
-              Coveo-powered answers from Wikipedia, Investor.gov, CFPB, CDC, and more.
+              AI-powered financial knowledge from Wikipedia, Investor.gov, IRS, NCUA, FinCEN, CFPB, FDIC, FRB, OCC, MyMoney, and FTC.
               <br />
               Get AI-powered answers, relevant passages, and comprehensive results.
             </EmptyStateText>

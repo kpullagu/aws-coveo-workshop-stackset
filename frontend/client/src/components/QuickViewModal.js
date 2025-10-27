@@ -276,7 +276,6 @@ const SourceInfo = styled.div`
 const getProjectColor = (project) => {
   const colors = {
     wikipedia: '#0066cc',
-    wikivoyage: '#00af89',
     wikibooks: '#ff6600',
     wikinews: '#cc0000',
     wikiquote: '#9966cc',

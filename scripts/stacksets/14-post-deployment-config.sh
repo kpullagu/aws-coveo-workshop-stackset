@@ -53,8 +53,15 @@ ACCOUNT_COUNT=$(echo $ACCOUNT_IDS | wc -w)
 log_info "Found $ACCOUNT_COUNT accounts to configure"
 echo ""
 
-# Create CSV header
-echo "Account ID,Account Name,Region,App Runner URL,User Pool ID,Client ID,Cognito Domain,Test User Email,Test User Name,Password,Login URL,Status" > "$OUTPUT_FILE"
+# AWS Access Portal URL (fixed)
+AWS_ACCESS_PORTAL="https://d-90662c5a64.awsapps.com/start"
+
+# UI Login credentials (from .env.stacksets)
+UI_LOGIN_USERNAME="${TEST_USER_EMAIL}"
+UI_LOGIN_PASSWORD="${TEST_USER_PASSWORD}"
+
+# Create CSV header (tab-separated)
+echo -e "AWS Access Portal\tAWS Account ID\tAWS Account Name\tAWS User Name\tAWS Password\tUI URL\tUI User Login User Name\tUI Login Password" > "$OUTPUT_FILE"
 
 COUNTER=1
 for ACCOUNT_ID in $ACCOUNT_IDS; do
@@ -71,20 +78,22 @@ for ACCOUNT_ID in $ACCOUNT_IDS; do
         --output json 2>/dev/null || echo "{}")
     
     ACCOUNT_NAME=$(echo "$ACCOUNT_INFO" | jq -r '.Account.Name // "Unknown"')
-    ACCOUNT_OWNER=$(echo "$ACCOUNT_INFO" | jq -r '.Account.Email // "Unknown"')
     
-    # Extract owner name from email (part before @) or use account name
-    if [ "$ACCOUNT_OWNER" != "Unknown" ]; then
-        ASSIGNED_USER=$(echo "$ACCOUNT_OWNER" | cut -d'@' -f1)
+    # Extract last digits after the last hyphen in account name for AWS username
+    # Example: "workshop-account-1" -> "workshop-user1"
+    LAST_DIGITS=$(echo "$ACCOUNT_NAME" | grep -oE '[0-9]+$' || echo "")
+    if [ -n "$LAST_DIGITS" ]; then
+        AWS_USERNAME="workshop-user${LAST_DIGITS}"
     else
-        ASSIGNED_USER="$ACCOUNT_NAME"
+        # Fallback: use counter if no digits found
+        AWS_USERNAME="workshop-user${COUNTER}"
     fi
     
     # Assume role
     CREDS=$(assume_role "$ACCOUNT_ID" 2>&1)
     if [ $? -ne 0 ]; then
         log_error "Cannot assume role"
-        echo "$ACCOUNT_ID,\"$ACCOUNT_NAME\",$AWS_REGION,ERROR: Cannot assume role,,,,,$ASSIGNED_USER,,,FAILED" >> "$OUTPUT_FILE"
+        echo -e "${AWS_ACCESS_PORTAL}\t${ACCOUNT_ID}\t${ACCOUNT_NAME}\t${AWS_USERNAME}\t\tERROR: Cannot assume role\t${UI_LOGIN_USERNAME}\t${UI_LOGIN_PASSWORD}" >> "$OUTPUT_FILE"
         COUNTER=$((COUNTER + 1))
         continue
     fi
@@ -136,7 +145,7 @@ for ACCOUNT_ID in $ACCOUNT_IDS; do
     
     if [ -z "$CORE_STACK" ] || [ "$CORE_STACK" == "null" ]; then
         log_error "No Layer 2 stack found"
-        echo "$ACCOUNT_ID,\"$ACCOUNT_NAME\",$AWS_REGION,No stacks deployed,,,,,$ASSIGNED_USER,,,FAILED" >> "$OUTPUT_FILE"
+        echo -e "${AWS_ACCESS_PORTAL}\t${ACCOUNT_ID}\t${ACCOUNT_NAME}\t${AWS_USERNAME}\t\tNo stacks deployed\t${UI_LOGIN_USERNAME}\t${UI_LOGIN_PASSWORD}" >> "$OUTPUT_FILE"
         unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
         COUNTER=$((COUNTER + 1))
         continue
@@ -288,14 +297,16 @@ EOF
         fi
     fi
     
-    # Build login URL
-    LOGIN_URL="N/A"
-    if [ "$APP_RUNNER_URL" != "Not deployed" ] && [ -n "$COGNITO_DOMAIN" ]; then
-        LOGIN_URL="https://${COGNITO_DOMAIN}.auth.${AWS_REGION}.amazoncognito.com/login?client_id=${CLIENT_ID}&response_type=code&redirect_uri=https://${APP_RUNNER_URL}"
+    # Format UI URL
+    if [ "$APP_RUNNER_URL" != "Not deployed" ]; then
+        FORMATTED_UI_URL="https://$APP_RUNNER_URL"
+    else
+        FORMATTED_UI_URL="Not deployed"
     fi
     
-    # Add to CSV (using assigned user from account owner)
-    echo "$ACCOUNT_ID,\"$ACCOUNT_NAME\",$AWS_REGION,https://$APP_RUNNER_URL,$USER_POOL_ID,$CLIENT_ID,$COGNITO_DOMAIN,$TEST_USER_EMAIL,$ASSIGNED_USER,$TEST_USER_PASSWORD,$LOGIN_URL,SUCCESS" >> "$OUTPUT_FILE"
+    # Add to CSV (tab-separated)
+    # Format: AWS Access Portal, AWS Account ID, AWS Account Name, AWS User Name, AWS Password (empty), UI URL, UI User Login User Name, UI Login Password
+    echo -e "${AWS_ACCESS_PORTAL}\t${ACCOUNT_ID}\t${ACCOUNT_NAME}\t${AWS_USERNAME}\t\t${FORMATTED_UI_URL}\t${UI_LOGIN_USERNAME}\t${UI_LOGIN_PASSWORD}" >> "$OUTPUT_FILE"
     
     log_success "Account $ACCOUNT_ID configured successfully!"
     echo ""
@@ -309,8 +320,13 @@ log_success "Configuration Complete!"
 log_success "=========================================="
 log_info "Deployment information saved to: $OUTPUT_FILE"
 log_info ""
-log_info "You can open this file in Excel"
+log_info "CSV Format (tab-separated):"
+log_info "  - AWS Access Portal: $AWS_ACCESS_PORTAL"
+log_info "  - AWS User Names: workshop-user1, workshop-user2, etc."
+log_info "  - UI Login: $UI_LOGIN_USERNAME / $UI_LOGIN_PASSWORD"
 log_info ""
-log_info "Test credentials for all accounts:"
+log_info "You can open this file in Excel or any spreadsheet application"
+log_info ""
+log_info "Cognito test credentials (for backend testing):"
 log_info "  Email: $TEST_USER_EMAIL"
 log_info "  Password: $TEST_USER_PASSWORD"

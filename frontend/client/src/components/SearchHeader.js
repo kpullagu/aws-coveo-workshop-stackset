@@ -96,20 +96,21 @@ const SearchButton = styled(motion.button)`
 
 const ClearButton = styled(motion.button)`
   position: absolute;
-  right: 60px;
-  top: 50%;
-  transform: translateY(-50%);
+  right: 64px;
   background: none;
   border: none;
   color: #999;
   cursor: pointer;
-  padding: 8px;
+  padding: 0;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   height: 32px;
   width: 32px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
 
   &:hover {
     background: #f5f5f5;
@@ -202,7 +203,7 @@ const SuggestionItem = styled.div`
 const backendOptions = [
   { value: 'coveo', label: 'Coveo' },
   { value: 'bedrockAgent', label: 'Bedrock Agent' },
-  { value: 'coveoMCP', label: 'Coveo MCP' }
+  { value: 'coveoMCP', label: 'Coveo MCP Server Agent' }
 ];
 
 const SearchHeader = ({ onSearch, backendMode, onBackendModeChange, searchQuery, onClearSearch }) => {
@@ -274,7 +275,7 @@ const SearchHeader = ({ onSearch, backendMode, onBackendModeChange, searchQuery,
   return (
     <HeaderContainer>
       <HeaderContent>
-        <Logo>Finance & Travel Knowledge Hub</Logo>
+        <Logo>Coveo Workshop Knowledge Explorer</Logo>
 
         <SearchContainer>
           <form onSubmit={handleSubmit}>
@@ -282,7 +283,7 @@ const SearchHeader = ({ onSearch, backendMode, onBackendModeChange, searchQuery,
               <SearchInput
                 ref={inputRef}
                 type="text"
-                placeholder="Search Wikipedia, Wikivoyage, Wikibooks, and more..."
+                placeholder="Search financial topics from Wikipedia and government sources..."
                 value={query}
                 onChange={handleInputChange}
                 onFocus={() => query.length > 2 && setShowSuggestions(true)}

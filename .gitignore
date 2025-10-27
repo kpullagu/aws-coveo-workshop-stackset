@@ -170,3 +170,4 @@ config/env.schema.json
 # These files are kept in .gitignore for reference but can be deleted
 # if you only need StackSets deployment.
 .env.stacksets
+workshop-deployment-info.csv

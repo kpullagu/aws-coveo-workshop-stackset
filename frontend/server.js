@@ -642,7 +642,7 @@ app.post('/api/answer', async (req, res) => {
             originContext: "Passages",
             actionCause: "passageRetrieval",
             capture: false,
-            source: ["Finance & Travel Knowledge Hub@1.0.0"]
+            source: ["Coveo Workshop Knowledge Explorer@1.0.0"]
           }
         };
         console.log(`🤖 Routing to API Gateway ${endpoint} (${backendMode} mode - single-turn, no session memory)`);
@@ -828,7 +828,7 @@ app.post('/api/chat', async (req, res) => {
             originContext: "Passages",
             actionCause: "passageRetrieval",
             capture: false,
-            source: ["Finance & Travel Knowledge Hub@1.0.0"]
+            source: ["Coveo Workshop Knowledge Explorer@1.0.0"]
           }
         };
         console.log(`🤖 Routing to API Gateway ${endpoint} (${backendMode} mode - multi-turn with sessionId: ${payload.sessionId.substring(0, 8)}...)`);
