@@ -94,6 +94,41 @@ fi
 
 # Check 1.3: Child buckets exist (via Layer 1 StackSet)
 log_step "  1.3: Checking child buckets exist..."
+
+# First check for OUTDATED instances and fix them
+OUTDATED_ACCOUNTS=$(aws cloudformation list-stack-instances \
+    --stack-set-name "workshop-layer1-prerequisites" \
+    --region "$AWS_REGION" \
+    --query 'Summaries[?Status==`OUTDATED`].Account' \
+    --output text 2>/dev/null || echo "")
+
+if [ -n "$OUTDATED_ACCOUNTS" ]; then
+    log_warn "Found OUTDATED Layer 1 instances: $OUTDATED_ACCOUNTS"
+    log_step "  Fixing OUTDATED instances automatically..."
+    
+    UPDATE_OP_ID=$(aws cloudformation update-stack-instances \
+        --stack-set-name "workshop-layer1-prerequisites" \
+        --accounts $OUTDATED_ACCOUNTS \
+        --regions $AWS_REGION \
+        --region "$AWS_REGION" \
+        --query 'OperationId' \
+        --output text 2>/dev/null || echo "")
+    
+    if [ -n "$UPDATE_OP_ID" ]; then
+        log_step "  Update operation started: $UPDATE_OP_ID"
+        log_step "  Waiting for update to complete (this may take 2-3 minutes)..."
+        
+        aws cloudformation wait stack-set-operation-complete \
+            --stack-set-name "workshop-layer1-prerequisites" \
+            --operation-id "$UPDATE_OP_ID" \
+            --region "$AWS_REGION" 2>/dev/null || true
+        
+        log_ok "OUTDATED instances fixed"
+        sleep 10
+    fi
+fi
+
+# Now check all instances
 LAYER1_MISSING=0
 
 for ACCOUNT_ID in $ACCOUNT_IDS; do

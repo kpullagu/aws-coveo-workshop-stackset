@@ -109,13 +109,24 @@ export const answerAPI = async (query, backendMode = 'coveo') => {
   }
 };
 
-export const chatAPI = async (message, sessionId, backendMode = 'coveo') => {
+export const chatAPI = async (message, sessionId, backendMode = 'coveo', memoryId = null, endSession = false) => {
   try {
-    const response = await api.post('/api/chat', {
+    const requestBody = {
       message,
       sessionId,
       backendMode
-    });
+    };
+    
+    // memoryId is extracted from JWT token in the backend Lambda
+    // No need to pass it from frontend
+    // (keeping parameter for backward compatibility)
+    
+    // Add endSession flag to finalize and summarize session (for bedrockAgent and coveoMCP)
+    if (endSession && (backendMode === 'bedrockAgent' || backendMode === 'coveoMCP')) {
+      requestBody.endSession = true;
+    }
+    
+    const response = await api.post('/api/chat', requestBody);
     return response.data;
   } catch (error) {
     throw new Error(`Chat failed: ${error.response?.data?.error || error.message}`);

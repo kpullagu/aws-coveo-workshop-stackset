@@ -27,21 +27,114 @@ const LoginScreen = styled.div`
   min-height: 80vh;
   text-align: center;
   color: white;
-  padding: 40px;
+  padding: 40px 20px;
+`;
+
+const LoginCard = styled.div`
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 48px 40px;
+  max-width: 700px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 `;
 
 const LoginTitle = styled.h1`
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  font-weight: 300;
+  font-size: 2.5rem;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  letter-spacing: -0.5px;
 `;
 
 const LoginSubtitle = styled.p`
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   margin-bottom: 2rem;
+  opacity: 0.95;
+  line-height: 1.6;
+  font-weight: 300;
+`;
+
+const SourcesSection = styled.div`
+  margin: 2rem 0;
+  text-align: left;
+`;
+
+const SourcesTitle = styled.h3`
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  text-align: center;
+  opacity: 0.95;
+`;
+
+const SourcesList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const SourceItem = styled.li`
+  padding: 0.5rem 0;
+  font-size: 0.95rem;
   opacity: 0.9;
-  max-width: 600px;
+  display: flex;
+  align-items: center;
+  
+  &:before {
+    content: "✓";
+    margin-right: 0.75rem;
+    font-weight: bold;
+    color: #4ade80;
+    font-size: 1.1rem;
+  }
+`;
+
+const BackendModesSection = styled.div`
+  margin: 2rem 0 2.5rem 0;
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+`;
+
+const BackendModesTitle = styled.h3`
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  opacity: 0.95;
+`;
+
+const BackendModesList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: left;
+`;
+
+const BackendMode = styled.div`
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border-left: 3px solid #4ade80;
+  
+  strong {
+    font-weight: 600;
+    margin-right: 0.5rem;
+  }
+  
+  span {
+    opacity: 0.85;
+    font-size: 0.9rem;
+  }
 `;
 
 const LoginButtonStyled = styled.button`
@@ -116,11 +209,27 @@ function AuthenticatedApp() {
   const [backendMode, setBackendMode] = useState('coveo');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [sessionIds, setSessionIds] = useState({
+
+  // Helper to get or set value in localStorage
+  const getOrSetLocalStorage = (key, generator) => {
+    const stored = localStorage.getItem(key);
+    if (stored) return stored;
+    const newValue = generator();
+    localStorage.setItem(key, newValue);
+    return newValue;
+  };
+
+  // Persist sessionIds in localStorage (survive page refresh)
+  const [sessionIds, setSessionIds] = useState(() => ({
     coveo: null, // Coveo doesn't use session IDs (single-turn)
-    bedrockAgent: uuidv4(),
-    coveoMCP: uuidv4()
-  });
+    bedrockAgent: getOrSetLocalStorage('bedrock_session_id', uuidv4),
+    coveoMCP: getOrSetLocalStorage('coveo_mcp_session_id', uuidv4)
+  }));
+
+  // memoryId is now extracted from JWT token in the backend Lambda
+  // No need to generate it in the frontend
+  const memoryId = null;
+
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -362,6 +471,15 @@ function AuthenticatedApp() {
         onToggle={() => setIsChatOpen(!isChatOpen)}
         backendMode={backendMode}
         sessionId={sessionIds[backendMode]}
+        memoryId={memoryId}
+        onSessionEnd={(newSessionId) => {
+          // Update sessionId in state and localStorage when session ends
+          setSessionIds(prev => ({
+            ...prev,
+            [backendMode]: newSessionId
+          }));
+          localStorage.setItem(`${backendMode === 'bedrockAgent' ? 'bedrock' : 'coveo_mcp'}_session_id`, newSessionId);
+        }}
       />
 
       <AnimatePresence>
@@ -405,13 +523,51 @@ function AppContent() {
   if (!isAuthenticated()) {
     return (
       <LoginScreen>
-        <LoginTitle>Coveo Workshop Knowledge Explorer</LoginTitle>
-        <LoginSubtitle>
-          AI-powered financial knowledge from Wikipedia, Investor.gov, IRS, NCUA, FinCEN, CFPB, FDIC, FRB, OCC, MyMoney, and FTC. Please login to access the search interface and explore our three different backend modes: Coveo, Bedrock Agent, and Coveo MCP Server.
-        </LoginSubtitle>
-        <LoginButtonStyled onClick={login}>
-          Login to Continue
-        </LoginButtonStyled>
+        <LoginCard>
+          <LoginTitle>Coveo Workshop Knowledge Explorer</LoginTitle>
+          <LoginSubtitle>
+            AI-powered financial knowledge assistant with multiple backend modes for exploring different AI architectures.
+          </LoginSubtitle>
+
+          <SourcesSection>
+            <SourcesTitle>📚 Authoritative Knowledge Sources</SourcesTitle>
+            <SourcesList>
+              <SourceItem>Wikipedia - General financial knowledge</SourceItem>
+              <SourceItem>Investor.gov - Investment basics & alerts</SourceItem>
+              <SourceItem>IRS - Tax information & regulations</SourceItem>
+              <SourceItem>NCUA - Credit union information</SourceItem>
+              <SourceItem>FinCEN - Financial crimes enforcement</SourceItem>
+              <SourceItem>CFPB - Consumer Financial Protection Bureau</SourceItem>
+              <SourceItem>FDIC - Federal Deposit Insurance Corporation</SourceItem>
+              <SourceItem>FRB - Federal Reserve Board</SourceItem>
+              <SourceItem>OCC - Office of the Comptroller of the Currency</SourceItem>
+              <SourceItem>MyMoney.gov - Financial literacy resources</SourceItem>
+              <SourceItem>FTC - Federal Trade Commission</SourceItem>
+            </SourcesList>
+          </SourcesSection>
+
+          <BackendModesSection>
+            <BackendModesTitle>🚀 Three Backend Modes to Explore</BackendModesTitle>
+            <BackendModesList>
+              <BackendMode>
+                <strong>Coveo:</strong>
+                <span>Direct API integration with Coveo Search , Passage Retrieval  and Answer API services</span>
+              </BackendMode>
+              <BackendMode>
+                <strong>Bedrock Agent:</strong>
+                <span>AWS Bedrock Agent integrated with Coveo Passage Retrieval API</span>
+              </BackendMode>
+              <BackendMode>
+                <strong>Coveo MCP Server Agent:</strong>
+                <span>AWS Bedrock Agentcore with AgentCore Runtime orchestration and Coveo MCP server with Search, Passage and Answer Tools</span>
+              </BackendMode>
+            </BackendModesList>
+          </BackendModesSection>
+
+          <LoginButtonStyled onClick={login}>
+            🔐 Login to Continue
+          </LoginButtonStyled>
+        </LoginCard>
       </LoginScreen>
     );
   }

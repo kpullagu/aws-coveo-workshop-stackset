@@ -711,9 +711,9 @@ app.post('/api/answer', async (req, res) => {
 // Chat endpoint
 app.post('/api/chat', async (req, res) => {
   try {
-    const { message, sessionId, backendMode = 'coveo' } = req.body;
+    const { message, sessionId, backendMode = 'coveo', endSession = false } = req.body;
 
-    console.log('💬 Chat request:', { message, backendMode, hasSessionId: !!sessionId });
+    console.log('💬 Chat request:', { message, backendMode, hasSessionId: !!sessionId, endSession });
 
     let endpoint;
     let payload;
@@ -789,6 +789,7 @@ app.post('/api/chat', async (req, res) => {
           sessionId: sessionId || require('uuid').v4(),
           backendMode: 'bedrockAgent',
           conversationType: 'multi-turn', // Indicate this is a multi-turn request
+          endSession: endSession,  // Pass endSession flag to finalize and summarize
           numberOfPassages: 5,
           organizationId: COVEO_CONFIG.ORG_ID,
           pipeline: COVEO_CONFIG.SEARCH_PIPELINE,
@@ -831,7 +832,7 @@ app.post('/api/chat', async (req, res) => {
             source: ["Coveo Workshop Knowledge Explorer@1.0.0"]
           }
         };
-        console.log(`🤖 Routing to API Gateway ${endpoint} (${backendMode} mode - multi-turn with sessionId: ${payload.sessionId.substring(0, 8)}...)`);
+        console.log(`🤖 Routing to API Gateway ${endpoint} (${backendMode} mode - multi-turn with sessionId: ${payload.sessionId.substring(0, 8)}..., endSession=${endSession})`);
         break;
 
       case 'coveoMCP':
@@ -842,6 +843,7 @@ app.post('/api/chat', async (req, res) => {
           sessionId: sessionId || require('uuid').v4(),
           backendMode,
           conversationType: 'multi-turn',  // Chat endpoint is multi-turn with memory
+          endSession: endSession,  // Pass endSession flag to finalize and summarize
           controls: {
             answer: {
               additionalFields: ["title", "clickableuri", "project", "uniqueid", "summary"]
@@ -854,7 +856,7 @@ app.post('/api/chat', async (req, res) => {
             }
           }
         };
-        console.log(`🎯 Routing to API Gateway /agentcore (${backendMode} mode - multi-turn with memory) with controls for answer, passages, and search`);
+        console.log(`🎯 Routing to API Gateway /agentcore (${backendMode} mode - multi-turn with memory, endSession=${endSession}) with controls for answer, passages, and search`);
         break;
 
       default:

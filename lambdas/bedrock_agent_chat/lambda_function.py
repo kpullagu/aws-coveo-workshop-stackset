@@ -41,6 +41,7 @@ import logging
 import os
 import urllib.request
 import urllib.parse
+import hashlib
 from typing import Dict, Any, Generator, List
 import boto3
 from botocore.exceptions import ClientError
@@ -49,151 +50,46 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger()
 logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
 
+def get_stable_memory_id(event: Dict[str, Any], body: Dict[str, Any]) -> str:
+    """
+    Derive a stable memoryId for cross-session memory.
+    
+    Priority:
+    1. Explicit memoryId from request body
+    2. Cognito sub from JWT claims (most stable)
+    3. Cognito email from JWT claims
+    4. Fallback to "anonymous"
+    
+    Returns hashed value to normalize length and avoid PII leakage.
+    """
+    # Try explicit memoryId from request body
+    if body.get("memoryId"):
+        return str(body["memoryId"])[:256]
+    
+    # Try to get Cognito identity from authorizer claims
+    try:
+        claims = (event.get("requestContext", {})
+                       .get("authorizer", {})
+                       .get("jwt", {})
+                       .get("claims", {}))
+        
+        # Prefer 'sub' (stable user ID) over email
+        stable_source = claims.get("sub") or claims.get("email")
+        
+        if stable_source:
+            # Hash to normalize length and avoid PII in logs
+            return hashlib.sha256(stable_source.encode("utf-8")).hexdigest()
+    except Exception as e:
+        logger.warning(f"Could not extract identity from claims: {e}")
+    
+    # Fallback to anonymous (not ideal for memory, but safe)
+    return hashlib.sha256("anonymous".encode("utf-8")).hexdigest()
+
 # Initialize Bedrock Agent Runtime client
 bedrock_agent_runtime = boto3.client(
     'bedrock-agent-runtime',
     region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1')
 )
-
-def get_coveo_passages(query: str, coveo_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Retrieve passages from Coveo Passages API using the optimized payload structure.
-    
-    Args:
-        query: The search query
-        coveo_payload: Optimized Coveo passages payload from frontend
-        
-    Returns:
-        List of passage objects with content and metadata
-    """
-    try:
-        # Get Coveo configuration from SSM Parameter Store
-        ssm_client = boto3.client('ssm', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
-        stack_prefix = os.environ.get('STACK_PREFIX', 'workshop')
-        
-        # Get Coveo API key from SSM Parameter Store
-        param_name = f'/{stack_prefix}/coveo/search-api-key'
-        try:
-            response = ssm_client.get_parameter(Name=param_name, WithDecryption=False)
-            coveo_api_key = response['Parameter']['Value']
-        except Exception as e:
-            logger.error(f"Failed to get API key from SSM: {e}")
-            raise Exception(f"Could not retrieve Coveo API key from SSM Parameter Store: {param_name}")
-        
-        # Use organization ID from payload (more efficient)
-        coveo_org_id = coveo_payload.get('organizationId')
-        if not coveo_org_id:
-            # Fallback to SSM if not in payload
-            coveo_org_id = ssm_client.get_parameter(Name=f'/{stack_prefix}/coveo/org-id')['Parameter']['Value']
-        
-        # Prepare optimized Coveo Passages API payload matching server.js format
-        passages_payload = {
-            'query': query,  # Use 'query' not 'q' to match server.js format
-            'organizationId': coveo_org_id,  # Required for v3 API
-            'numberOfPassages': coveo_payload.get('numberOfPassages', 5),
-            'pipeline': coveo_payload.get('pipeline', 'default'),
-            'searchHub': coveo_payload.get('searchHub', 'default'),
-            'localization': coveo_payload.get('localization', {'locale': 'en-US', 'fallbackLocale': 'en'}),
-            'additionalFields': coveo_payload.get('additionalFields', ["title", "clickableuri", "project", "uniqueid", "summary"]),
-            'facets': coveo_payload.get('facets', []),
-            'queryCorrection': coveo_payload.get('queryCorrection', {'enabled': True, 'options': {'automaticallyCorrect': 'whenNoResults'}}),
-            'analytics': coveo_payload.get('analytics', {})
-        }
-        
-        # Coveo Passages API URL - Use the correct v3 endpoint
-        passages_url = f'https://platform.cloud.coveo.com/rest/search/v3/passages/retrieve'
-        
-        # Prepare request
-        headers = {
-            'Authorization': f'Bearer {coveo_api_key}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-        
-        data = json.dumps(passages_payload).encode('utf-8')
-        req = urllib.request.Request(passages_url, data=data, headers=headers, method='POST')
-        
-        logger.info(f"Calling Coveo Passages API for query: {query[:50]}...")
-        logger.info(f"🔗 API URL: {passages_url}")
-        logger.info(f"📦 Request payload: {json.dumps(passages_payload, indent=2)}")
-        logger.info(f"🔑 Using API key: {coveo_api_key[:10]}...{coveo_api_key[-4:]}")
-        logger.info(f"🏢 Organization ID: {coveo_org_id}")
-        
-        # Make request to Coveo
-        try:
-            with urllib.request.urlopen(req, timeout=30) as response:
-                if response.status == 200:
-                    result = json.loads(response.read().decode('utf-8'))
-                    logger.info(f"📄 Full API response: {json.dumps(result, indent=2)}")
-                    
-                    # v3 API returns 'items' instead of 'passages'
-                    passages = result.get('items', result.get('passages', []))
-                    logger.info(f"✅ Retrieved {len(passages)} passages from Coveo")
-                    logger.info(f"📄 Response structure: {list(result.keys())}")
-                    
-                    if len(passages) == 0:
-                        logger.warning("⚠️ No passages found in response - checking response content")
-                        logger.warning(f"⚠️ Response keys: {list(result.keys())}")
-                        logger.warning(f"⚠️ Items count: {len(result.get('items', []))}")
-                        if 'items' in result:
-                            logger.warning(f"⚠️ First item structure: {list(result['items'][0].keys()) if result['items'] else 'No items'}")
-                    
-                    return passages
-                else:
-                    error_body = response.read().decode('utf-8')
-                    logger.error(f"❌ Coveo Passages API error: {response.status}")
-                    logger.error(f"❌ Error response body: {error_body}")
-                    return []
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode('utf-8') if e.fp else 'No error details'
-            logger.error(f"❌ HTTP error from Coveo: {e.code} {e.reason}")
-            logger.error(f"❌ Error response body: {error_body}")
-            return []
-        except urllib.error.URLError as e:
-            logger.error(f"❌ URL error calling Coveo: {str(e)}")
-            return []
-        except Exception as e:
-            logger.error(f"❌ Unexpected error calling Coveo Passages API: {str(e)}")
-            return []
-            
-    except Exception as e:
-        logger.error(f"❌ Error in get_coveo_passages function: {str(e)}")
-        return []
-
-
-def format_passages_for_agent(passages: List[Dict[str, Any]]) -> str:
-    """
-    Format retrieved passages for Bedrock Agent consumption.
-    
-    Args:
-        passages: List of passage objects from Coveo
-        
-    Returns:
-        Formatted string with passages and metadata
-    """
-    if not passages:
-        return "No relevant passages found."
-    
-    formatted_passages = []
-    for i, passage in enumerate(passages[:5], 1):  # Limit to top 5
-        # Handle the actual API response structure
-        document = passage.get('document', {})
-        content = passage.get('text', passage.get('content', ''))
-        title = document.get('title', passage.get('title', 'Unknown'))
-        uri = document.get('clickableuri', passage.get('clickUri', passage.get('uri', '')))
-        project = document.get('project', passage.get('project', 'Unknown'))
-        
-        formatted_passage = f"""
-Passage {i}:
-Title: {title}
-Source: {project}
-Content: {content}
-URL: {uri}
----"""
-        formatted_passages.append(formatted_passage)
-    
-    return "\n".join(formatted_passages)
-
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
@@ -270,56 +166,46 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 })
             }
         
+        # Get stable memoryId for cross-session memory
+        memory_id = get_stable_memory_id(event, body)
+        logger.info(f"Using memoryId: {memory_id[:16]}... for cross-session memory")
+        
+        # Check if this is an end-of-session request
+        end_session = bool(body.get('endSession', False))
+        if end_session:
+            logger.info(f"End session requested - will finalize and summarize session {session_id[:8]}...")
+        
         logger.info(f"Invoking Bedrock Agent {agent_id} (alias: {alias_id}) with session: {session_id[:8]}...")
         
-        # Step 1: Retrieve passages from Coveo
-        logger.info("Retrieving relevant passages from Coveo...")
-        passages = get_coveo_passages(question, body)
-        formatted_passages = format_passages_for_agent(passages)
+        # Let the agent decide whether to call retrieve_passages tool
+        # Do NOT pre-fetch passages - this allows agent to handle memory questions correctly
         
-        # Step 2: Prepare enhanced input for Bedrock Agent with passages
-        enhanced_input = f"""
-User Question: {question}
-
-Relevant Information:
-{formatted_passages}
-
-Please provide a comprehensive answer based on the above information. Include citations where appropriate.
-"""
-        
-        logger.info(f"Enhanced input prepared with {len(passages)} passages")
-        
-        # Step 3: Invoke agent with memory-enabled session and passages
+        # Invoke agent with memory-enabled session
         try:
-            response = bedrock_agent_runtime.invoke_agent(
-                agentId=agent_id,
-                agentAliasId=alias_id,
-                sessionId=session_id,  # <<-- Enables multi-turn memory
-                inputText=enhanced_input,  # <<-- Enhanced with passages
-                enableTrace=False  # Set to True for debugging
-            )
+            # Build invoke parameters
+            invoke_params = {
+                'agentId': agent_id,
+                'agentAliasId': alias_id,
+                'sessionId': session_id,  # Within-session continuity
+                'inputText': question,  # Pass question directly, let agent decide what to do
+                'enableTrace': False
+            }
+            
+            # Add memoryId for cross-session memory (if memory is enabled in console)
+            invoke_params['memoryId'] = memory_id
+            
+            # Add endSession flag to finalize and summarize the session
+            if end_session:
+                invoke_params['endSession'] = True
+            
+            logger.info(f"Invoke params: agentId={agent_id}, sessionId={session_id[:8]}, memoryId={memory_id[:16]}, endSession={end_session}")
+            
+            response = bedrock_agent_runtime.invoke_agent(**invoke_params)
             
             # Process streaming response
             final_text, agent_citations = process_agent_stream(response['completion'])
             
-            # Combine agent citations with passage citations
-            passage_citations = []
-            for passage in passages[:3]:  # Top 3 passages as citations
-                # Handle the actual API response structure
-                document = passage.get('document', {})
-                passage_citations.append({
-                    'title': document.get('title', passage.get('title', 'Unknown')),
-                    'uri': document.get('clickableuri', passage.get('clickUri', passage.get('uri', ''))),
-                    'text': passage.get('text', passage.get('content', ''))[:200] + '...',  # Preview
-                    'project': document.get('project', passage.get('project', 'Unknown')),
-                    'uniqueid': document.get('uniqueid', passage.get('uniqueid', '')),
-                    'source': 'coveo_passages'
-                })
-            
-            # Combine citations (agent citations + passage citations)
-            all_citations = agent_citations + passage_citations
-            
-            # Return enhanced response
+            # Return enhanced response with memory information
             return {
                 'statusCode': 200,
                 'headers': {
@@ -330,11 +216,12 @@ Please provide a comprehensive answer based on the above information. Include ci
                 'body': json.dumps({
                     'response': final_text,  # Primary field expected by ChatBot
                     'answer': final_text,    # Backup field for compatibility
-                    'citations': all_citations,
-                    'confidence': 0.90,  # Higher confidence with grounded passages
-                    'usedTooling': ['coveo.passages', 'bedrock.agent'],
-                    'sessionId': session_id,
-                    'passagesUsed': len(passages)
+                    'citations': agent_citations,  # Citations from agent (includes tool results)
+                    'memoryId': memory_id,   # Return memoryId for client tracking
+                    'sessionEnded': end_session,  # Indicate if session was ended
+                    'confidence': 0.90,
+                    'usedTooling': ['bedrock.agent'],
+                    'sessionId': session_id
                 })
             }
             

@@ -13,12 +13,13 @@ You are **Coveo Finance Assistant**, a helpful AI that provides accurate, well-f
 
 ## Core Principles
 
-1. **Grounding**: Use ONLY information from tool outputs. Never make up information.
+1. **Grounding**: Use ONLY information from tool outputs. Never make up information or URLs.
 2. **Formatting**: Provide clean, well-structured answers in markdown format with proper headings, lists, and emphasis.
-3. **Sources**: Sources will be automatically extracted from tool responses and displayed separately. Focus on the answer content.
+3. **Sources**: ALWAYS call tools for knowledge questions. Sources will be automatically extracted from tool responses and displayed separately. Focus on the answer content.
 4. **Clarity**: Be concise and direct. Lead with the answer, then provide supporting details.
 5. **No Internal Tags**: NEVER include <thinking>, <reasoning>, or any XML-style tags in your response. Keep all reasoning internal.
 6. **No Manual Citations**: Do NOT manually list sources in your response. They will be displayed automatically from the tool results.
+7. **CRITICAL**: For every knowledge question, you MUST call at least one tool (answer_question, passage_retrieval, or search_coveo). Never answer knowledge questions from memory alone.
 
 ## Response Format
 
@@ -101,28 +102,69 @@ Please let me know so I can provide accurate information.
    - Explain what's missing
    - Suggest how the user can refine their question
 
-## Memory Usage (Multi-Turn Conversations)
+## Memory Usage (Multi-Turn and Cross-Session)
 
-When in a multi-turn conversation:
-- **Remember context** from previous messages in the session
-- **Reference previous answers** when relevant ("As I mentioned earlier...")
-- **Build on prior information** rather than repeating
-- **Track the conversation flow** to provide coherent responses
-- **Remember topics discussed** so follow-up questions make sense
-- **Ask for clarification** if the question is ambiguous given the context
+You have access to conversation memory both within the current session and across previous sessions.
 
-### Important for Follow-up Questions:
-- If the user asks a follow-up question (e.g., "How does it work?" after asking about ACH), you should:
-  1. Recognize the topic from previous context (ACH)
-  2. Call the appropriate tool again with the refined query
-  3. Provide fresh information with new sources
-  4. You may reference previous information but ALWAYS provide current sources
+### Question Type Detection
 
-### Memory Limitations:
-- Memory stores conversation context (topics, questions, answers)
+Before calling tools, determine if the question is about:
+
+**1. Memory/History Questions** (DO NOT call tools):
+- "What did we discuss?" / "Remind me about..." / "What were we talking about?"
+- "What did I ask last time?" / "What topics have we covered?"
+- Action: Answer from conversation memory WITHOUT calling tools
+
+**2. Knowledge Questions** (CALL tools):
+- "What is ACH?" / "How do 401k plans work?" / "Tell me about Roth IRAs"
+- Action: Call appropriate tool (answer_question, passage_retrieval, or search_coveo)
+
+### Memory Capabilities
+
+**Within-Session Memory:**
+- Remember all exchanges in the current conversation
+- Track conversation flow and context
+- Reference previous answers when relevant
+
+**Cross-Session Memory:**
+- Recall topics from previous conversations (days/weeks ago)
+- Remember user preferences and interests
+- Provide personalized responses based on history
+
+### Using Memory Effectively
+
+**For Memory Questions:**
+```
+User: "What did we discuss last time?"
+You: "In our previous session, we discussed ACH payment systems, including 
+      how they work for direct deposits and bill payments."
+```
+Do NOT call tools - answer from memory.
+
+**For Follow-up Knowledge Questions:**
+```
+User: "What is ACH?"
+You: [Call answer_question or passage_retrieval] → Provide answer with sources
+
+User: "How does it compare to wire transfers?"
+You: [Call passage_retrieval again] → Provide comparison with NEW sources
+```
+Always call tools for knowledge questions, even if topic was discussed before.
+
+### Memory Guidelines
+
+- **Reference context**: "As we discussed earlier..." or "Building on our previous conversation..."
+- **Personalize**: Adapt responses based on user's interests and previous questions
+- **Fresh sources**: For knowledge questions, ALWAYS call tools to get current sources
+- **Don't repeat**: If user asks same question, acknowledge and provide concise answer
+- **Clarify ambiguity**: Use context to understand vague follow-ups ("How does it work?" → understand "it" from context)
+
+### Important Notes
+
+- Memory stores conversation summaries (topics, questions, general answers)
 - Memory does NOT store full source citations from previous turns
-- For follow-up questions, ALWAYS call tools again to get fresh sources
-- This ensures users always get current, complete citations
+- For knowledge questions, ALWAYS call tools to get fresh, complete sources
+- This ensures users always get current, accurate citations
 
 ## Critical Rules
 
@@ -272,6 +314,42 @@ def clean_response(text: str) -> str:
     text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
     return text.strip()
 
+def get_stable_actor_id(payload: dict, context: BedrockAgentCoreContext) -> str:
+    """
+    Extract stable user identity from Cognito JWT token.
+    
+    Priority:
+    1. actor_id from payload (if explicitly provided)
+    2. Extract from Cognito JWT token in context
+    3. user_id from payload
+    4. Default to 'anonymous'
+    """
+    # Check if actor_id is explicitly provided
+    if payload.get("actor_id"):
+        return payload["actor_id"]
+    
+    # Try to extract from Cognito JWT token
+    try:
+        # AgentCore context may have identity information
+        if hasattr(context, 'identity') and context.identity:
+            identity = context.identity
+            # Try common JWT claims
+            if hasattr(identity, 'sub'):
+                return identity.sub
+            if hasattr(identity, 'cognito_username'):
+                return identity.cognito_username
+            if hasattr(identity, 'username'):
+                return identity.username
+    except Exception as e:
+        print(f"WARNING: Failed to extract identity from context: {e}")
+    
+    # Fallback to user_id from payload
+    if payload.get("user_id"):
+        return payload["user_id"]
+    
+    # Default
+    return "anonymous"
+
 @app.entrypoint
 def invoke(payload: dict, context: BedrockAgentCoreContext):
     # 1) Controls pass-through from UI/Lambda
@@ -280,24 +358,53 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
 
     # 2) Extract session information for memory
     session_id = payload.get("session_id", "default_session")
-    actor_id = payload.get("actor_id", payload.get("user_id", "default_user"))
+    actor_id = get_stable_actor_id(payload, context)
     user_text = payload.get("text") or payload.get("prompt") or ""
+    end_session = payload.get("end_session", False)
     
     # OBSERVABILITY: Log session start with correlation ID
-    print(f"OBSERVABILITY session_id={session_id} actor_id={actor_id} event=session_start")
+    print(f"OBSERVABILITY session_id={session_id} actor_id={actor_id} event=session_start end_session={end_session}")
     print(f"OBSERVABILITY session_id={session_id} event=request_received text_length={len(user_text)}")
     
     # Set session ID in MCP adapter for correlation
     mcp.set_session_id(session_id)
 
-    # 3) Retrieve relevant memories if available
+    # 3) Handle session end request
+    if end_session:
+        print(f"OBSERVABILITY session_id={session_id} actor_id={actor_id} event=session_end_requested")
+        
+        # Write final session_end event for summarization
+        if memory_client and MEMORY_ID:
+            try:
+                memory_client.create_event(
+                    memory_id=MEMORY_ID,
+                    actor_id=actor_id,
+                    session_id=session_id,
+                    messages=[
+                        ("Session ended by user", "SYSTEM")
+                    ],
+                    metadata={"type": "session_end"}
+                )
+                print(f"DEBUG: Wrote session_end event for session {session_id}")
+                print(f"OBSERVABILITY session_id={session_id} event=session_end_complete")
+            except Exception as e:
+                print(f"WARNING: Failed to write session_end event: {e}")
+        
+        # Return acknowledgment
+        return {
+            "response": "Session ended successfully. Your conversation has been saved.",
+            "session_id": session_id,
+            "sources": []
+        }
+    
+    # 4) Retrieve relevant memories if available (cross-session memory)
     conversation_context = ""
     if memory_client and MEMORY_ID:
         try:
-            # Retrieve memories for this session
+            # Retrieve memories from all sessions for this actor
             memories = memory_client.retrieve_memories(
                 memory_id=MEMORY_ID,
-                namespace=f"/summaries/{actor_id}/{session_id}",
+                namespace=f"/summaries/{actor_id}",
                 query=user_text
             )
             
@@ -305,11 +412,11 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
                 conversation_context = "\n\n**Previous Context:**\n"
                 for memory in memories[:3]:  # Use top 3 relevant memories
                     conversation_context += f"- {memory.get('content', '')}\n"
-                print(f"DEBUG: Retrieved {len(memories)} memories for session {session_id}")
+                print(f"DEBUG: Retrieved {len(memories)} memories for actor {actor_id}")
         except Exception as e:
             print(f"WARNING: Failed to retrieve memories: {e}")
 
-    # 4) Build agent with policy & tools
+    # 5) Build agent with policy & tools
     # Note: Region is configured via AWS_REGION environment variable, not passed to Agent
     print(f"OBSERVABILITY session_id={session_id} event=tool_plan_start text='{user_text[:120]}'")
     
@@ -329,7 +436,7 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
     # Clean response to remove any thinking tags
     text = clean_response(text)
     
-    # 5) Extract sources from tool calls and log tool usage
+    # 6) Extract sources from tool calls and log tool usage
     sources = []
     tools_used = []
     try:
@@ -340,48 +447,104 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
             print(f"OBSERVABILITY session_id={session_id} event=tools_selected tools={','.join(tools_used)}")
             
             for tool_call in result.tool_calls:
+                tool_name = tool_call.name if hasattr(tool_call, 'name') else 'unknown'
+                print(f"DEBUG: Processing tool call: {tool_name}")
+                
                 if hasattr(tool_call, 'result') and tool_call.result:
                     tool_result = tool_call.result
+                    print(f"DEBUG: Tool result type: {type(tool_result)}")
+                    
                     # Try to parse tool result as JSON
                     if isinstance(tool_result, str):
                         try:
-                            import json
                             tool_data = json.loads(tool_result)
+                            print(f"DEBUG: Parsed tool data keys: {tool_data.keys() if isinstance(tool_data, dict) else 'not a dict'}")
+                            
                             # Extract citations/results from tool response
                             if isinstance(tool_data, dict):
-                                # From answer API
-                                if 'citations' in tool_data:
+                                # From answer API - check for citations
+                                if 'citations' in tool_data and tool_data['citations']:
+                                    print(f"DEBUG: Found {len(tool_data['citations'])} citations in answer API response")
                                     for citation in tool_data.get('citations', []):
-                                        sources.append({
-                                            'title': citation.get('title', ''),
-                                            'url': citation.get('uri', citation.get('clickUri', citation.get('clickableuri', ''))),
-                                            'project': citation.get('project', '')
-                                        })
-                                # From search/passages API
-                                elif 'results' in tool_data:
-                                    for result_item in tool_data.get('results', [])[:5]:  # Top 5 results
-                                        sources.append({
-                                            'title': result_item.get('title', ''),
-                                            'url': result_item.get('clickUri', result_item.get('uri', '')),
-                                            'project': result_item.get('raw', {}).get('project', '')
-                                        })
-                        except:
-                            pass
+                                        url = citation.get('uri') or citation.get('clickUri') or citation.get('clickableuri', '')
+                                        title = citation.get('title', 'Untitled')
+                                        if url:  # Only add if URL exists
+                                            sources.append({
+                                                'title': title,
+                                                'url': url,
+                                                'project': citation.get('project', '')
+                                            })
+                                            print(f"DEBUG: Added citation: {title[:50]}... -> {url[:50]}...")
+                                
+                                # From passages API - check for passages/items
+                                elif 'passages' in tool_data and tool_data['passages']:
+                                    print(f"DEBUG: Found {len(tool_data['passages'])} passages")
+                                    for passage in tool_data.get('passages', [])[:8]:  # Top 8 passages
+                                        url = passage.get('uri') or passage.get('clickUri') or passage.get('clickableuri', '')
+                                        title = passage.get('title', 'Untitled')
+                                        if url:  # Only add if URL exists
+                                            sources.append({
+                                                'title': title,
+                                                'url': url,
+                                                'project': passage.get('project', '')
+                                            })
+                                            print(f"DEBUG: Added passage: {title[:50]}... -> {url[:50]}...")
+                                
+                                # From search API - check for results
+                                elif 'results' in tool_data and tool_data['results']:
+                                    print(f"DEBUG: Found {len(tool_data['results'])} search results")
+                                    for result_item in tool_data.get('results', [])[:8]:  # Top 8 results
+                                        # Handle both direct fields and nested raw fields
+                                        url = result_item.get('clickUri') or result_item.get('uri', '')
+                                        title = result_item.get('title', 'Untitled')
+                                        project = result_item.get('project', '')
+                                        
+                                        # Try raw field if not found at top level
+                                        if not url and 'raw' in result_item:
+                                            url = result_item['raw'].get('clickableuri', '')
+                                        if not project and 'raw' in result_item:
+                                            project = result_item['raw'].get('project', '')
+                                        
+                                        if url:  # Only add if URL exists
+                                            sources.append({
+                                                'title': title,
+                                                'url': url,
+                                                'project': project
+                                            })
+                                            print(f"DEBUG: Added search result: {title[:50]}... -> {url[:50]}...")
+                                
+                                else:
+                                    print(f"WARNING: Tool data has no recognized source fields. Keys: {list(tool_data.keys())}")
+                        except json.JSONDecodeError as e:
+                            print(f"WARNING: Failed to parse tool result as JSON: {e}")
+                            print(f"DEBUG: Tool result preview: {tool_result[:200]}...")
+                        except Exception as e:
+                            print(f"WARNING: Error processing tool result: {e}")
+                    else:
+                        print(f"DEBUG: Tool result is not a string, type: {type(tool_result)}")
+        else:
+            print(f"WARNING: No tool_calls found in result. Result type: {type(result)}")
+            print(f"DEBUG: Result attributes: {dir(result)}")
         
         # Deduplicate sources by URL
         seen_urls = set()
         unique_sources = []
         for source in sources:
-            if source['url'] and source['url'] not in seen_urls:
-                seen_urls.add(source['url'])
+            url = source.get('url', '')
+            if url and url not in seen_urls:
+                seen_urls.add(url)
                 unique_sources.append(source)
         sources = unique_sources
         
-        print(f"DEBUG: Extracted {len(sources)} sources from tool calls")
+        print(f"INFO: Extracted {len(sources)} unique sources from {len(tools_used)} tool calls")
+        if len(sources) == 0 and len(tools_used) > 0:
+            print(f"WARNING: Tools were called but no sources were extracted! This is a bug.")
     except Exception as e:
-        print(f"WARNING: Failed to extract sources: {e}")
+        print(f"ERROR: Failed to extract sources: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # 6) Store conversation in memory
+    # 7) Store conversation in memory
     if memory_client and MEMORY_ID:
         try:
             memory_client.create_event(
@@ -400,10 +563,27 @@ def invoke(payload: dict, context: BedrockAgentCoreContext):
     # OBSERVABILITY: Log session completion
     print(f"OBSERVABILITY session_id={session_id} event=session_complete sources_count={len(sources)} tools_used={','.join(tools_used) if tools_used else 'none'}")
     
+    # VALIDATION: Warn if tools were called but no sources extracted
+    if len(tools_used) > 0 and len(sources) == 0:
+        print(f"CRITICAL WARNING: Tools were called ({tools_used}) but NO sources were extracted!")
+        print(f"CRITICAL WARNING: This means citations will not be displayed to the user.")
+        print(f"CRITICAL WARNING: Check tool response format and source extraction logic.")
+    
+    # VALIDATION: Ensure all sources have valid URLs
+    valid_sources = []
+    for source in sources:
+        if source.get('url') and source.get('url').startswith('http'):
+            valid_sources.append(source)
+        else:
+            print(f"WARNING: Filtered out invalid source: {source}")
+    
+    if len(valid_sources) < len(sources):
+        print(f"WARNING: Filtered {len(sources) - len(valid_sources)} sources with invalid URLs")
+    
     return {
         "response": text,
         "session_id": session_id,
-        "sources": sources
+        "sources": valid_sources
     }
 
 if __name__ == "__main__":

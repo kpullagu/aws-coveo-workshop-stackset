@@ -180,10 +180,10 @@ class AgentCoreClient:
                 logger.error(f"Error response: {e.response}")
             raise
 
-    def ask_agent(self, text: str, controls: Optional[Dict[str, Any]] = None, session_id: Optional[str] = None, actor_id: Optional[str] = None) -> Dict[str, Any]:
+    def ask_agent(self, text: str, controls: Optional[Dict[str, Any]] = None, session_id: Optional[str] = None, actor_id: Optional[str] = None, end_session: bool = False) -> Dict[str, Any]:
         """
         Ask the Agent a question. The Agent will decide which MCP tools to call.
-        Agent expects a simple payload: { "text": "...", "controls": {...}?, "session_id": "...", "actor_id": "..." }
+        Agent expects a simple payload: { "text": "...", "controls": {...}?, "session_id": "...", "actor_id": "...", "end_session": bool }
         """
         payload = {"text": text}
         # Pass-through controls (e.g., for Coveo Passages additionalFields)
@@ -194,6 +194,9 @@ class AgentCoreClient:
             payload["session_id"] = session_id
         if actor_id:
             payload["actor_id"] = actor_id
+        # Pass end_session flag to finalize and summarize session
+        if end_session:
+            payload["end_session"] = True
         return self.invoke_runtime(payload)
 
     def health_check(self) -> Dict[str, Any]:
@@ -250,7 +253,67 @@ def get_runtime_arn() -> str:
 # ----------------------------
 # Request handlers
 # ----------------------------
-def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str) -> Dict[str, Any]:
+def get_actor_id_from_token(event: Dict[str, Any]) -> str:
+    """
+    Extract stable user identity from Cognito JWT token.
+    
+    Priority:
+    1. Extract from Cognito authorizer context (API Gateway)
+    2. Extract from JWT token in Authorization header
+    3. Default to 'anonymous'
+    """
+    try:
+        # Try to get from API Gateway authorizer context
+        request_context = event.get('requestContext', {})
+        authorizer = request_context.get('authorizer', {})
+        
+        # Check for Cognito claims
+        claims = authorizer.get('claims', {})
+        if claims:
+            # Prefer 'sub' (unique user ID) over 'cognito:username'
+            if 'sub' in claims:
+                return claims['sub']
+            if 'cognito:username' in claims:
+                return claims['cognito:username']
+            if 'username' in claims:
+                return claims['username']
+        
+        # Try to decode JWT from Authorization header
+        headers = event.get('headers', {})
+        auth_header = headers.get('Authorization', '') or headers.get('authorization', '')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header[7:]
+            # Decode JWT (without verification - just to extract claims)
+            import base64
+            import json
+            try:
+                # JWT format: header.payload.signature
+                parts = token.split('.')
+                if len(parts) >= 2:
+                    # Decode payload (add padding if needed)
+                    payload = parts[1]
+                    payload += '=' * (4 - len(payload) % 4)
+                    decoded = base64.urlsafe_b64decode(payload)
+                    claims = json.loads(decoded)
+                    
+                    # Extract user identifier
+                    if 'sub' in claims:
+                        return claims['sub']
+                    if 'cognito:username' in claims:
+                        return claims['cognito:username']
+                    if 'username' in claims:
+                        return claims['username']
+                    if 'client_id' in claims:
+                        # For machine-to-machine tokens
+                        return f"client_{claims['client_id']}"
+            except Exception as e:
+                logger.warning(f"Failed to decode JWT: {e}")
+    except Exception as e:
+        logger.warning(f"Failed to extract actor_id from token: {e}")
+    
+    return "anonymous"
+
+def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str, event: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Handle chat/answer requests by communicating with Agent Runtime.
 
@@ -263,17 +326,20 @@ def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str) -> Dict[
         session_id = request_data.get('sessionId', str(uuid.uuid4()))
         backend = request_data.get('backend', request_data.get('backendMode', 'coveoMCP'))
         conversation_type = request_data.get('conversationType', 'multi-turn')
+        end_session = request_data.get('endSession', False)
 
         # NEW: controls pass-through (e.g., passages.additionalFields)
         controls = request_data.get('controls')
 
-        if not question:
+        if not question and not end_session:
             return create_error_response(400, "Question is required")
 
-        logger.info(f"Processing answer/chat request (backend={backend}, type={conversation_type})")
+        logger.info(f"Processing answer/chat request (backend={backend}, type={conversation_type}, end_session={end_session})")
 
         # Build a minimal prompt for single-turn, otherwise use the raw question
-        if conversation_type == 'single-turn':
+        if end_session:
+            prompt = "[END_SESSION]"
+        elif conversation_type == 'single-turn':
             prompt = f"Answer this question concisely: {question}"
         else:
             prompt = question
@@ -281,7 +347,12 @@ def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str) -> Dict[
         logger.info(f"Sending to Agent: {prompt}")
 
         # Extract actor_id (user identifier) for memory
-        actor_id = request_data.get('userId', request_data.get('user_id', 'anonymous'))
+        # Priority: 1) from token, 2) from request, 3) default
+        actor_id = get_actor_id_from_token(event) if event else "anonymous"
+        if actor_id == "anonymous":
+            actor_id = request_data.get('userId', request_data.get('user_id', 'anonymous'))
+
+        logger.info(f"Actor ID: {actor_id}")
 
         # X-Ray: Create subsegment for Agent invocation with annotations for transaction search
         if XRAY_AVAILABLE:
@@ -292,13 +363,14 @@ def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str) -> Dict[
                 xray_recorder.put_annotation('agentRuntimeArn', runtime_arn)
                 xray_recorder.put_annotation('actorId', actor_id)
                 xray_recorder.put_annotation('conversationType', conversation_type)
+                xray_recorder.put_annotation('endSession', end_session)
             except Exception as e:
                 logger.warning(f"Failed to add X-Ray annotations: {e}")
 
         try:
             # Call Agent Runtime with text + controls + session/actor info for memory
             agent_client = AgentCoreClient(runtime_arn, session_id=session_id)
-            agent_response = agent_client.ask_agent(prompt, controls=controls, session_id=session_id, actor_id=actor_id)
+            agent_response = agent_client.ask_agent(prompt, controls=controls, session_id=session_id, actor_id=actor_id, end_session=end_session)
         finally:
             if XRAY_AVAILABLE:
                 try:
@@ -374,12 +446,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         backend_mode = request_data.get('backendMode', request_data.get('backend', 'coveoMCP'))
 
         if backend_mode == 'coveoMCP' or path.endswith('/agentcore') or path.endswith('/chat'):
-            return handle_chat_request(request_data, runtime_arn)
+            return handle_chat_request(request_data, runtime_arn, event)
 
         # Fallback: also allow direct text calls (non-HTTP or unknown route)
         question = request_data.get('question', '') or request_data.get('query', '') or request_data.get('text', '')
         if question:
-            return handle_chat_request(request_data, runtime_arn)
+            return handle_chat_request(request_data, runtime_arn, event)
 
         return create_error_response(400, "Unsupported route or missing question")
 

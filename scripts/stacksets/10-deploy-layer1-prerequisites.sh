@@ -74,6 +74,67 @@ else
     log_info "No new stack instances to create"
 fi
 
+# Wait for instances to stabilize and fix any OUTDATED instances
+echo ""
+log_info "Waiting for stack instances to stabilize..."
+sleep 30
+
+# Check for OUTDATED instances and fix them
+log_info "Checking for OUTDATED instances..."
+MAX_RETRIES=3
+RETRY_COUNT=0
+
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    OUTDATED_ACCOUNTS=$(aws cloudformation list-stack-instances \
+        --stack-set-name workshop-layer1-prerequisites \
+        --region "$AWS_REGION" \
+        --query 'Summaries[?Status==`OUTDATED`].Account' \
+        --output text 2>/dev/null || echo "")
+    
+    if [ -z "$OUTDATED_ACCOUNTS" ]; then
+        log_success "All instances are CURRENT"
+        break
+    fi
+    
+    log_warning "Found OUTDATED accounts: $OUTDATED_ACCOUNTS"
+    log_info "Updating OUTDATED instances (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)..."
+    
+    UPDATE_OP_ID=$(aws cloudformation update-stack-instances \
+        --stack-set-name workshop-layer1-prerequisites \
+        --accounts $OUTDATED_ACCOUNTS \
+        --regions $AWS_REGION \
+        --region "$AWS_REGION" \
+        --query 'OperationId' \
+        --output text 2>/dev/null || echo "")
+    
+    if [ -n "$UPDATE_OP_ID" ]; then
+        log_info "Update operation started: $UPDATE_OP_ID"
+        log_info "Waiting for update to complete..."
+        
+        aws cloudformation wait stack-set-operation-complete \
+            --stack-set-name workshop-layer1-prerequisites \
+            --operation-id "$UPDATE_OP_ID" \
+            --region "$AWS_REGION" 2>/dev/null || true
+        
+        log_success "Update operation completed"
+        sleep 10
+    fi
+    
+    ((RETRY_COUNT++))
+done
+
+# Final status check
+FINAL_OUTDATED=$(aws cloudformation list-stack-instances \
+    --stack-set-name workshop-layer1-prerequisites \
+    --region "$AWS_REGION" \
+    --query 'Summaries[?Status==`OUTDATED`].Account' \
+    --output text 2>/dev/null || echo "")
+
+if [ -n "$FINAL_OUTDATED" ]; then
+    log_warning "Some instances are still OUTDATED: $FINAL_OUTDATED"
+    log_warning "This may resolve automatically. Continuing..."
+fi
+
 # Show status
 echo ""
 log_info "Checking deployment status..."

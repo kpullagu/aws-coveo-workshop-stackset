@@ -113,12 +113,17 @@ verify_lambda_packages() {
 wait_for_layer1_resources() {
     log_info "Waiting for Layer 1 deployment to stabilize..."
     
-    # First, fix any OUTDATED instances
-    fix_outdated_instances "workshop-layer1-prerequisites"
+    # Initial wait for instances to synchronize
+    log_info "Waiting 30 seconds for instances to synchronize..."
+    sleep 30
+    
+    # First, fix any OUTDATED instances (with 5 minute timeout per account)
+    log_info "Fixing any OUTDATED instances..."
+    fix_outdated_instances "workshop-layer1-prerequisites" 300
     
     # Check that all StackSet instances are CURRENT
     local RETRY_COUNT=0
-    local MAX_RETRIES=10  # 2.5 minutes total
+    local MAX_RETRIES=20  # 5 minutes total (20 * 15 seconds)
     
     while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         local NON_CURRENT=$(aws cloudformation list-stack-instances \
@@ -135,10 +140,23 @@ wait_for_layer1_resources() {
         log_info "  Waiting for Layer 1 to stabilize... (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)"
         log_info "  Non-CURRENT accounts: $NON_CURRENT"
         
-        # Try to fix OUTDATED instances again
-        if [ $RETRY_COUNT -eq 5 ]; then
-            log_info "  Attempting to fix OUTDATED instances again..."
-            fix_outdated_instances "workshop-layer1-prerequisites"
+        # Show detailed status for non-CURRENT accounts
+        for ACCOUNT_ID in $NON_CURRENT; do
+            local ACCOUNT_STATUS=$(aws cloudformation list-stack-instances \
+                --stack-set-name "workshop-layer1-prerequisites" \
+                --stack-instance-account "$ACCOUNT_ID" \
+                --stack-instance-region "$AWS_REGION" \
+                --region "$AWS_REGION" \
+                --query 'Summaries[0].[Status,StatusReason]' \
+                --output text 2>/dev/null || echo "UNKNOWN Unknown")
+            
+            log_info "    Account $ACCOUNT_ID: $ACCOUNT_STATUS"
+        done
+        
+        # Try to fix OUTDATED instances every 4 attempts (1 minute intervals)
+        if [ $((RETRY_COUNT % 4)) -eq 0 ] && [ $RETRY_COUNT -gt 0 ]; then
+            log_info "  Attempting to fix OUTDATED instances..."
+            fix_outdated_instances "workshop-layer1-prerequisites" 180
         fi
         
         sleep 15
@@ -146,9 +164,31 @@ wait_for_layer1_resources() {
     done
     
     if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-        log_error "✗ Layer 1 instances are not CURRENT after $MAX_RETRIES attempts"
-        log_info "S3 buckets may not be ready for replication"
-        return 1
+        log_warning "✗ Layer 1 instances are not CURRENT after $MAX_RETRIES attempts"
+        log_warning "Attempting one final fix with extended timeout..."
+        fix_outdated_instances "workshop-layer1-prerequisites" 600
+        
+        # Final check
+        local FINAL_NON_CURRENT=$(aws cloudformation list-stack-instances \
+            --stack-set-name "workshop-layer1-prerequisites" \
+            --region "$AWS_REGION" \
+            --query 'Summaries[?Status!=`CURRENT`].Account' \
+            --output text 2>/dev/null || echo "")
+        
+        if [ -n "$FINAL_NON_CURRENT" ]; then
+            log_error "✗ Layer 1 instances still not CURRENT: $FINAL_NON_CURRENT"
+            log_error "Deployment cannot continue without Layer 1 resources"
+            log_info ""
+            log_info "Troubleshooting steps:"
+            log_info "  1. Check CloudFormation console for detailed errors"
+            log_info "  2. Verify AWS Organizations permissions"
+            log_info "  3. Check for resource limits or quotas"
+            log_info "  4. Review CloudWatch Logs for stack events"
+            log_info ""
+            log_info "To manually fix and continue:"
+            log_info "  bash scripts/stacksets/fix-layer1-and-continue.sh"
+            return 1
+        fi
     fi
     
     log_success "Layer 1 resources are ready!"
@@ -163,9 +203,9 @@ wait_for_stackset_complete() {
     
     log_info "Waiting for $STACKSET_NAME to be fully deployed..."
     
-    # Initial wait for instances to be created (AWS takes a few seconds to create them)
-    log_info "Waiting for stack instances to be created..."
-    sleep 15
+    # Initial wait for instances to be created and synchronized
+    log_info "Waiting for stack instances to be created and synchronized..."
+    sleep 30
     
     local ELAPSED=0
     local INITIAL_CHECK=true
@@ -223,6 +263,11 @@ wait_for_stackset_complete() {
             
             if [ "$ALL_COMPLETE" = true ]; then
                 log_success "All stacks are fully deployed and stable"
+                
+                # Final check: Fix any OUTDATED instances before returning
+                log_info "Final check: Fixing any OUTDATED instances..."
+                fix_outdated_instances "$STACKSET_NAME"
+                
                 return 0
             fi
         else
@@ -230,6 +275,14 @@ wait_for_stackset_complete() {
             echo "$NON_CURRENT" | while read line; do
                 log_info "  $line"
             done
+            
+            # Check if any instances are OUTDATED and fix them
+            local OUTDATED_COUNT=$(echo "$NON_CURRENT" | grep -c "OUTDATED" || echo "0")
+            if [ "$OUTDATED_COUNT" -gt 0 ]; then
+                log_info "Found $OUTDATED_COUNT OUTDATED instances, fixing..."
+                # Use shorter timeout for intermediate fixes
+                fix_outdated_instances "$STACKSET_NAME" 180
+            fi
         fi
         
         sleep 60
@@ -244,6 +297,7 @@ wait_for_stackset_complete() {
 # Function to fix OUTDATED instances
 fix_outdated_instances() {
     local STACKSET_NAME="$1"
+    local MAX_WAIT_PER_ACCOUNT="${2:-300}"  # 5 minutes per account default
     
     log_info "Checking for OUTDATED instances in $STACKSET_NAME..."
     
@@ -277,13 +331,53 @@ fix_outdated_instances() {
         if [ -n "$OPERATION_ID" ]; then
             log_info "Update operation started: $OPERATION_ID"
             
-            # Wait for operation to complete
-            aws cloudformation wait stack-set-operation-complete \
-                --stack-set-name "$STACKSET_NAME" \
-                --operation-id "$OPERATION_ID" \
-                --region "$AWS_REGION" 2>/dev/null || true
+            # Wait for operation to complete with timeout
+            log_info "Waiting for operation to complete (max ${MAX_WAIT_PER_ACCOUNT}s)..."
             
-            # Check final status
+            local WAIT_START=$(date +%s)
+            local OPERATION_STATUS="RUNNING"
+            
+            while [ "$OPERATION_STATUS" = "RUNNING" ] || [ "$OPERATION_STATUS" = "QUEUED" ]; do
+                local CURRENT_TIME=$(date +%s)
+                local ELAPSED=$((CURRENT_TIME - WAIT_START))
+                
+                if [ $ELAPSED -gt $MAX_WAIT_PER_ACCOUNT ]; then
+                    log_warning "⚠️  Operation timeout after ${MAX_WAIT_PER_ACCOUNT}s for account $ACCOUNT_ID"
+                    log_warning "Operation may still be running in background"
+                    break
+                fi
+                
+                # Check operation status
+                OPERATION_STATUS=$(aws cloudformation describe-stack-set-operation \
+                    --stack-set-name "$STACKSET_NAME" \
+                    --operation-id "$OPERATION_ID" \
+                    --region "$AWS_REGION" \
+                    --query 'StackSetOperation.Status' \
+                    --output text 2>/dev/null || echo "UNKNOWN")
+                
+                if [ "$OPERATION_STATUS" = "SUCCEEDED" ]; then
+                    log_success "✓ Operation completed successfully"
+                    break
+                elif [ "$OPERATION_STATUS" = "FAILED" ] || [ "$OPERATION_STATUS" = "STOPPED" ]; then
+                    log_error "✗ Operation failed with status: $OPERATION_STATUS"
+                    
+                    # Get failure reason
+                    local FAILURE_REASON=$(aws cloudformation describe-stack-set-operation \
+                        --stack-set-name "$STACKSET_NAME" \
+                        --operation-id "$OPERATION_ID" \
+                        --region "$AWS_REGION" \
+                        --query 'StackSetOperation.StatusReason' \
+                        --output text 2>/dev/null || echo "Unknown")
+                    
+                    log_error "Reason: $FAILURE_REASON"
+                    break
+                fi
+                
+                log_info "  Status: $OPERATION_STATUS (${ELAPSED}s elapsed)"
+                sleep 10
+            done
+            
+            # Check final instance status
             local FINAL_STATUS=$(aws cloudformation list-stack-instances \
                 --stack-set-name "$STACKSET_NAME" \
                 --stack-instance-account "$ACCOUNT_ID" \
@@ -293,11 +387,29 @@ fix_outdated_instances() {
                 --output text 2>/dev/null || echo "UNKNOWN")
             
             if [ "$FINAL_STATUS" = "CURRENT" ]; then
-                log_success "✓ Account $ACCOUNT_ID updated successfully"
+                log_success "✓ Account $ACCOUNT_ID is now CURRENT"
             else
                 log_warning "✗ Account $ACCOUNT_ID status: $FINAL_STATUS"
+                
+                # Get detailed status
+                local DETAILED_STATUS=$(aws cloudformation list-stack-instances \
+                    --stack-set-name "$STACKSET_NAME" \
+                    --stack-instance-account "$ACCOUNT_ID" \
+                    --stack-instance-region "$AWS_REGION" \
+                    --region "$AWS_REGION" \
+                    --query 'Summaries[0].StatusReason' \
+                    --output text 2>/dev/null || echo "Unknown")
+                
+                if [ "$DETAILED_STATUS" != "Unknown" ] && [ "$DETAILED_STATUS" != "None" ]; then
+                    log_info "  Reason: $DETAILED_STATUS"
+                fi
             fi
+        else
+            log_warning "✗ No operation ID returned for account $ACCOUNT_ID"
         fi
+        
+        # Small delay between accounts to avoid throttling
+        sleep 2
     done
 }
 

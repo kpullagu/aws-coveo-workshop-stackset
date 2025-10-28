@@ -5,6 +5,7 @@ import { FiMessageCircle, FiX, FiSend, FiUser, FiCpu, FiBookOpen, FiChevronDown,
 import ReactMarkdown from 'react-markdown';
 import { Resizable } from 're-resizable';
 import { chatAPI } from '../services/api';
+import { v4 as uuidv4 } from 'uuid';
 
 const getProjectColor = (project) => {
   const colors = {
@@ -448,6 +449,27 @@ const SendButton = styled(motion.button)`
   }
 `;
 
+const EndChatButton = styled(motion.button)`
+  background: #f8f9fa;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #666;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #e9ecef;
+    border-color: #667eea;
+    color: #667eea;
+  }
+`;
+
 const TypingIndicator = styled(motion.div)`
   display: flex;
   align-items: center;
@@ -497,7 +519,7 @@ const BackendIndicator = styled.div`
   border-top: 1px solid #e1e5e9;
 `;
 
-const ChatBot = ({ isOpen, onToggle, backendMode, sessionId }) => {
+const ChatBot = ({ isOpen, onToggle, backendMode, sessionId, memoryId, onSessionEnd }) => {
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -532,7 +554,7 @@ const ChatBot = ({ isOpen, onToggle, backendMode, sessionId }) => {
     }
   }, [isOpen]);
 
-  // Update currentSessionId when sessionId prop changes (backend switch)
+  // Update currentSessionId when props change (backend switch)
   useEffect(() => {
     setCurrentSessionId(sessionId);
   }, [sessionId]);
@@ -555,7 +577,9 @@ const ChatBot = ({ isOpen, onToggle, backendMode, sessionId }) => {
       const response = await chatAPI(
         userMessage.text,
         backendMode === 'coveo' ? null : currentSessionId,
-        backendMode
+        backendMode,
+        null,  // memoryId extracted from JWT in backend
+        false  // endSession = false (normal message)
       );
 
       // Update session ID if provided (for multi-turn conversations)
@@ -563,11 +587,13 @@ const ChatBot = ({ isOpen, onToggle, backendMode, sessionId }) => {
         setCurrentSessionId(response.sessionId);
       }
 
+      // memoryId is managed by backend, no need to track in frontend
+
       const botText = response.response || response.answer || response.answerText || 'I apologize, but I could not generate a response.';
 
       // Extract sources from various possible response structures
       let sources = [];
-      
+
       // Debug logging for response structure
       console.log('🔍 Chat API response structure:', {
         response: response,
@@ -577,7 +603,7 @@ const ChatBot = ({ isOpen, onToggle, backendMode, sessionId }) => {
         responseKeys: Object.keys(response || {}),
         citationsStructure: response.citations ? response.citations.map(c => Object.keys(c)) : []
       });
-      
+
       if (response.sources) {
         sources = response.sources;
       } else if (response.citations) {
@@ -650,6 +676,51 @@ const ChatBot = ({ isOpen, onToggle, backendMode, sessionId }) => {
     });
   };
 
+  const handleEndChat = async () => {
+    if (backendMode === 'coveo') {
+      // Coveo doesn't use sessions, just clear messages
+      setMessages([{
+        id: 1,
+        text: "Hi! I'm your AI assistant. Ask me anything about the content in our knowledge base.",
+        isUser: false,
+        timestamp: new Date()
+      }]);
+      return;
+    }
+
+    try {
+      // Send end session request to finalize and summarize
+      await chatAPI(
+        "End session",  // Simple message instead of [END_SESSION]
+        currentSessionId,
+        backendMode,
+        null,  // memoryId extracted from JWT in backend
+        true  // endSession = true
+      );
+
+      // Generate new session ID
+      const newSessionId = uuidv4();
+      setCurrentSessionId(newSessionId);
+
+      // Notify parent to update localStorage
+      if (onSessionEnd) {
+        onSessionEnd(newSessionId);
+      }
+
+      // Clear messages for new session
+      setMessages([{
+        id: 1,
+        text: "Hi! I'm your AI assistant. Ask me anything about the content in our knowledge base.",
+        isUser: false,
+        timestamp: new Date()
+      }]);
+
+      console.log(`✅ Session ended. New session ID: ${newSessionId.slice(0, 8)}...`);
+    } catch (error) {
+      console.error('Failed to end session:', error);
+    }
+  };
+
   const getBackendDisplayName = () => {
     const names = {
       coveo: 'Coveo AI',
@@ -716,143 +787,155 @@ const ChatBot = ({ isOpen, onToggle, backendMode, sessionId }) => {
                   </CloseButton>
                 </ChatHeader>
 
-            <ChatMessages>
-              {messages.map((message) => {
-                const isExpanded = expandedMessages.has(message.id);
-                const areCitationsExpanded = expandedCitations.has(message.id);
-                const hasLongContent = message.text && message.text.length > 400;
-                const hasCitations = message.sources && message.sources.length > 0;
+                <ChatMessages>
+                  {messages.map((message) => {
+                    const isExpanded = expandedMessages.has(message.id);
+                    const areCitationsExpanded = expandedCitations.has(message.id);
+                    const hasLongContent = message.text && message.text.length > 400;
+                    const hasCitations = message.sources && message.sources.length > 0;
 
-                return (
-                  <Message
-                    key={message.id}
-                    isUser={message.isUser}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <MessageAvatar isUser={message.isUser}>
-                      {message.isUser ? <FiUser size={16} /> : <FiCpu size={16} />}
-                    </MessageAvatar>
-                    <MessageBubble isUser={message.isUser}>
-                      {message.isUser ? (
-                        message.text
-                      ) : (
-                        <>
-                          <MessageContent isExpanded={isExpanded}>
-                            <FormattedMessage>
-                              <ReactMarkdown>
-                                {isExpanded ? message.text : (hasLongContent ? message.text.substring(0, 400) + '...' : message.text)}
-                              </ReactMarkdown>
-                            </FormattedMessage>
-                          </MessageContent>
-                          
-                          {hasLongContent && !message.isUser && (
-                            <ExpandButton 
-                              onClick={() => toggleMessageExpansion(message.id)}
-                              style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                            >
-                              {isExpanded ? (
-                                <>Show Less <FiChevronUp size={12} /></>
-                              ) : (
-                                <>Show More <FiChevronDown size={12} /></>
-                              )}
-                            </ExpandButton>
-                          )}
+                    return (
+                      <Message
+                        key={message.id}
+                        isUser={message.isUser}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <MessageAvatar isUser={message.isUser}>
+                          {message.isUser ? <FiUser size={16} /> : <FiCpu size={16} />}
+                        </MessageAvatar>
+                        <MessageBubble isUser={message.isUser}>
+                          {message.isUser ? (
+                            message.text
+                          ) : (
+                            <>
+                              <MessageContent isExpanded={isExpanded}>
+                                <FormattedMessage>
+                                  <ReactMarkdown>
+                                    {isExpanded ? message.text : (hasLongContent ? message.text.substring(0, 400) + '...' : message.text)}
+                                  </ReactMarkdown>
+                                </FormattedMessage>
+                              </MessageContent>
 
-                          {hasCitations && (
-                            <CitationsContainer>
-                              <CitationsHeader>
-                                <CitationsTitle>
-                                  <FiBookOpen size={12} />
-                                  Sources ({message.sources.length})
-                                </CitationsTitle>
-                                <ExpandButton onClick={() => toggleCitationsExpansion(message.id)}>
-                                  {areCitationsExpanded ? (
-                                    <>Hide <FiChevronUp size={10} /></>
+                              {hasLongContent && !message.isUser && (
+                                <ExpandButton
+                                  onClick={() => toggleMessageExpansion(message.id)}
+                                  style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  {isExpanded ? (
+                                    <>Show Less <FiChevronUp size={12} /></>
                                   ) : (
-                                    <>Show <FiChevronDown size={10} /></>
+                                    <>Show More <FiChevronDown size={12} /></>
                                   )}
                                 </ExpandButton>
-                              </CitationsHeader>
-                              
-                              {areCitationsExpanded && (
-                                <CitationsList>
-                                  {message.sources.map((source, index) => (
-                                    <CitationItem key={index}>
-                                      <CitationTitle>{source.title}</CitationTitle>
-                                      <CitationMeta>
-                                        {source.project && (
-                                          <ProjectBadge project={source.project}>
-                                            {source.project}
-                                          </ProjectBadge>
-                                        )}
-                                        {source.url && (
-                                          <a 
-                                            href={source.url} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            style={{ fontSize: '10px', color: '#667eea' }}
-                                          >
-                                            View Source
-                                          </a>
-                                        )}
-                                      </CitationMeta>
-                                    </CitationItem>
-                                  ))}
-                                </CitationsList>
                               )}
-                            </CitationsContainer>
+
+                              {hasCitations && (
+                                <CitationsContainer>
+                                  <CitationsHeader>
+                                    <CitationsTitle>
+                                      <FiBookOpen size={12} />
+                                      Sources ({message.sources.length})
+                                    </CitationsTitle>
+                                    <ExpandButton onClick={() => toggleCitationsExpansion(message.id)}>
+                                      {areCitationsExpanded ? (
+                                        <>Hide <FiChevronUp size={10} /></>
+                                      ) : (
+                                        <>Show <FiChevronDown size={10} /></>
+                                      )}
+                                    </ExpandButton>
+                                  </CitationsHeader>
+
+                                  {areCitationsExpanded && (
+                                    <CitationsList>
+                                      {message.sources.map((source, index) => (
+                                        <CitationItem key={index}>
+                                          <CitationTitle>{source.title}</CitationTitle>
+                                          <CitationMeta>
+                                            {source.project && (
+                                              <ProjectBadge project={source.project}>
+                                                {source.project}
+                                              </ProjectBadge>
+                                            )}
+                                            {source.url && (
+                                              <a
+                                                href={source.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ fontSize: '10px', color: '#667eea' }}
+                                              >
+                                                View Source
+                                              </a>
+                                            )}
+                                          </CitationMeta>
+                                        </CitationItem>
+                                      ))}
+                                    </CitationsList>
+                                  )}
+                                </CitationsContainer>
+                              )}
+                            </>
                           )}
-                        </>
-                      )}
-                    </MessageBubble>
-                  </Message>
-                );
-              })}
+                        </MessageBubble>
+                      </Message>
+                    );
+                  })}
 
-              {isTyping && (
-                <Message isUser={false}>
-                  <MessageAvatar isUser={false}>
-                    <FiCpu size={16} />
-                  </MessageAvatar>
-                  <TypingIndicator
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                  >
-                    <TypingDots>
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </TypingDots>
-                  </TypingIndicator>
-                </Message>
-              )}
-              <div ref={messagesEndRef} />
-            </ChatMessages>
+                  {isTyping && (
+                    <Message isUser={false}>
+                      <MessageAvatar isUser={false}>
+                        <FiCpu size={16} />
+                      </MessageAvatar>
+                      <TypingIndicator
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        <TypingDots>
+                          <span></span>
+                          <span></span>
+                          <span></span>
+                        </TypingDots>
+                      </TypingIndicator>
+                    </Message>
+                  )}
+                  <div ref={messagesEndRef} />
+                </ChatMessages>
 
-            <ChatInput>
-              <InputContainer>
-                <MessageInput
-                  ref={inputRef}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Ask me anything..."
-                  rows={1}
-                  disabled={isTyping}
-                />
-                <SendButton
-                  onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isTyping}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <FiSend size={16} />
-                </SendButton>
-              </InputContainer>
-            </ChatInput>
+                <ChatInput>
+                  <InputContainer>
+                    <MessageInput
+                      ref={inputRef}
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      placeholder="Ask me anything..."
+                      rows={1}
+                      disabled={isTyping}
+                    />
+                    <SendButton
+                      onClick={handleSendMessage}
+                      disabled={!inputValue.trim() || isTyping}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <FiSend size={16} />
+                    </SendButton>
+                  </InputContainer>
+                  {(backendMode === 'bedrockAgent' || backendMode === 'coveoMCP') && messages.length > 1 && (
+                    <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <EndChatButton
+                        onClick={handleEndChat}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <FiX size={12} />
+                        End Chat & Save Memory
+                      </EndChatButton>
+                    </div>
+                  )}
+                </ChatInput>
 
                 <BackendIndicator>
                   Powered by {getBackendDisplayName()}
