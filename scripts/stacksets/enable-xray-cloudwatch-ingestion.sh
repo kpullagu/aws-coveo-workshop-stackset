@@ -195,8 +195,94 @@ EOF
     
     log_success "✓ X-Ray configured for 100% trace capture"
     
-    # Step 6: Verify configuration
-    log_info "Step 6: Verifying configuration..."
+    # Step 6: Configure Memory Observability (per-memory delivery)
+    log_info "Step 6: Configuring Memory observability..."
+    
+    # Find Memory resources in this account
+    MEMORY_ARN=$(aws cloudformation describe-stacks \
+        --region "$AWS_REGION" \
+        --query 'Stacks[?contains(StackName, `layer3-ai-services`)].Outputs[?OutputKey==`AgentMemoryArn`].OutputValue | [0]' \
+        --output text 2>/dev/null || echo "")
+    
+    if [ -n "$MEMORY_ARN" ] && [ "$MEMORY_ARN" != "None" ]; then
+        MEMORY_ID="${MEMORY_ARN##*/}"
+        log_info "  Found Memory: $MEMORY_ID"
+        
+        # Create log group for Memory application logs
+        LOG_GROUP="/aws/vendedlogs/bedrock-agentcore/memory/APPLICATION_LOGS/${MEMORY_ID}"
+        
+        aws logs create-log-group \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP" 2>/dev/null && \
+            log_info "    ✓ Memory log group created" || \
+            log_info "    Memory log group already exists"
+        
+        # Set retention policy
+        aws logs put-retention-policy \
+            --log-group-name "$LOG_GROUP" \
+            --retention-in-days 7 \
+            --region "$AWS_REGION" 2>/dev/null || true
+        
+        LG_ARN="arn:aws:logs:${AWS_REGION}:${ACCOUNT_ID}:log-group:${LOG_GROUP}"
+        
+        # Create delivery sources
+        aws logs put-delivery-source \
+            --region "$AWS_REGION" \
+            --name "${MEMORY_ID}-logs-source" \
+            --log-type APPLICATION_LOGS \
+            --resource-arn "$MEMORY_ARN" 2>/dev/null || true
+        
+        aws logs put-delivery-source \
+            --region "$AWS_REGION" \
+            --name "${MEMORY_ID}-traces-source" \
+            --log-type TRACES \
+            --resource-arn "$MEMORY_ARN" 2>/dev/null || true
+        
+        # Create delivery destinations
+        aws logs put-delivery-destination \
+            --region "$AWS_REGION" \
+            --name "${MEMORY_ID}-logs-dest" \
+            --delivery-destination-type CWL \
+            --delivery-destination-configuration "{\"destinationResourceArn\":\"$LG_ARN\"}" 2>/dev/null || true
+        
+        aws logs put-delivery-destination \
+            --region "$AWS_REGION" \
+            --name "${MEMORY_ID}-traces-dest" \
+            --delivery-destination-type XRAY 2>/dev/null || true
+        
+        # Get destination ARNs
+        LOGS_DEST_ARN=$(aws logs describe-delivery-destinations \
+            --region "$AWS_REGION" \
+            --query "deliveryDestinations[?name=='${MEMORY_ID}-logs-dest'].arn" \
+            --output text 2>/dev/null || echo "")
+        
+        TRACES_DEST_ARN=$(aws logs describe-delivery-destinations \
+            --region "$AWS_REGION" \
+            --query "deliveryDestinations[?name=='${MEMORY_ID}-traces-dest'].arn" \
+            --output text 2>/dev/null || echo "")
+        
+        # Connect sources to destinations
+        if [ -n "$LOGS_DEST_ARN" ] && [ -n "$TRACES_DEST_ARN" ]; then
+            aws logs create-delivery \
+                --region "$AWS_REGION" \
+                --delivery-source-name "${MEMORY_ID}-logs-source" \
+                --delivery-destination-arn "$LOGS_DEST_ARN" 2>/dev/null || true
+            
+            aws logs create-delivery \
+                --region "$AWS_REGION" \
+                --delivery-source-name "${MEMORY_ID}-traces-source" \
+                --delivery-destination-arn "$TRACES_DEST_ARN" 2>/dev/null || true
+            
+            log_success "  ✓ Memory observability configured"
+        else
+            log_warning "  Could not configure Memory delivery"
+        fi
+    else
+        log_info "  No Memory found in this account, skipping Memory configuration"
+    fi
+    
+    # Step 7: Verify configuration
+    log_info "Step 7: Verifying configuration..."
     
     # Check if log groups exist
     SPANS_LG=$(aws logs describe-log-groups \
@@ -229,19 +315,22 @@ done
 log_success "=========================================="
 log_success "Configuration Complete!"
 log_success "=========================================="
-log_info "X-Ray span ingestion to CloudWatch Logs is now enabled in all accounts."
+log_info "X-Ray span ingestion and Memory observability are now enabled in all accounts."
 log_info ""
 log_info "What this enables:"
 log_info "  ✓ X-Ray traces are ingested into CloudWatch Logs"
+log_info "  ✓ Memory logs and traces are delivered to CloudWatch/X-Ray"
 log_info "  ✓ Traces are viewable in Bedrock AgentCore Observability dashboard"
 log_info "  ✓ 100% of traces are captured (FixedRate: 1.0)"
 log_info "  ✓ Spans are stored in /aws/spans log group"
 log_info "  ✓ Application signals in /aws/application-signals/data"
+log_info "  ✓ Memory logs in /aws/vendedlogs/bedrock-agentcore/memory/"
 log_info ""
 log_info "To view traces:"
 log_info "  1. Go to Bedrock AgentCore console"
 log_info "  2. Navigate to Observability section"
 log_info "  3. View traces, metrics, and insights"
+log_info "  4. The 'Enable Transaction Search' banner should be gone from Memory tab"
 log_info ""
 log_info "To query spans in CloudWatch Logs Insights:"
 log_info "  Log Group: /aws/spans"
@@ -249,4 +338,7 @@ log_info "  Query:"
 log_info "    fields @timestamp, @message"
 log_info "    | filter @message like /session_id/"
 log_info "    | sort @timestamp desc"
+log_info ""
+log_info "To query Memory logs:"
+log_info "  Log Group: /aws/vendedlogs/bedrock-agentcore/memory/APPLICATION_LOGS/<memory-id>"
 
