@@ -58,10 +58,10 @@ This workshop deploys a complete AI-powered search solution across multiple AWS 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      Master/Management Account                      │
-│  • ECR Repositories (MCP Server, Agent, UI images)                 │
-│  • S3 Bucket (Lambda packages, CloudFormation templates)           │
-│  • Lambda Layer (shared dependencies)                              │
-│  • StackSet Management (deployment orchestration)                  │
+│  • ECR Repositories (MCP Server, Agent, UI images)                  │
+│  • S3 Bucket (Lambda packages, CloudFormation templates)            │
+│  • Lambda Layer (shared dependencies)                               │
+│  • StackSet Management (deployment orchestration)                   │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              │ AWS Organizations
@@ -70,32 +70,32 @@ This workshop deploys a complete AI-powered search solution across multiple AWS 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    Child Accounts (10+ accounts)                    │
 │                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐ │
-│  │ Layer 1: Prerequisites                                       │ │
-│  │  • S3 Buckets (replicated from master)                      │ │
-│  │  • ECR Repositories (cross-account pull)                    │ │
-│  │  • IAM Roles (execution, replication)                       │ │
-│  └──────────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ Layer 1: Prerequisites                                       │   │
+│  │  • S3 Buckets (replicated from master)                       │   │
+│  │  • ECR Repositories (cross-account pull)                     │   │
+│  │  • IAM Roles (execution, replication)                        │   │
+│  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐ │
-│  │ Layer 2: Core Infrastructure                                │ │
-│  │  • Lambda Functions (search, passages, answering)           │ │
-│  │  • API Gateway (RESTful API)                                │ │
-│  │  • Cognito User Pool (authentication)                       │ │
-│  └──────────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ Layer 2: Core Infrastructure                                 │   │
+│  │  • Lambda Functions (search, passages, answering)            │   │
+│  │  • API Gateway (RESTful API)                                 │   │
+│  │  • Cognito User Pool (authentication)                        │   │
+│  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐ │
-│  │ Layer 3: AI Services                                        │ │
-│  │  • Bedrock AgentCore MCP Runtime                            │ │
-│  │  • Bedrock AgentCore Agent Runtime                          │ │
-│  │  • SSM Parameters (configuration)                           │ │
-│  └──────────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ Layer 3: AI Services                                         │   │
+│  │  • Bedrock AgentCore MCP Runtime                             │   │
+│  │  • Bedrock AgentCore Agent Runtime                           │   │
+│  │  • SSM Parameters (configuration)                            │   │
+│  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐ │
-│  │ Layer 4: UI                                                 │ │
-│  │  • App Runner Service (React UI + Express BFF)              │ │
-│  │  • CloudWatch Logs (application logs)                       │ │
-│  └──────────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ Layer 4: UI                                                  │   │
+│  │  • App Runner Service (React UI + Express BFF)               │   │
+│  │  • CloudWatch Logs (application logs)                        │   │
+│  └──────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -500,6 +500,7 @@ bash scripts/stacksets/11-deploy-layer2-core.sh
 ```bash
 bash scripts/stacksets/12-deploy-layer3-ai-services.sh
 ```
+- Deploys Bedrock Agent
 - Deploys AgentCore MCP Runtime
 - Deploys AgentCore Agent Runtime
 - Creates SSM parameters for runtimes
