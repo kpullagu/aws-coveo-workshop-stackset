@@ -99,9 +99,12 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     log_warning "Found OUTDATED accounts: $OUTDATED_ACCOUNTS"
     log_info "Updating OUTDATED instances (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)..."
     
+    # Convert space-separated accounts to array for proper AWS CLI handling
+    ACCOUNT_ARRAY=($OUTDATED_ACCOUNTS)
+    
     UPDATE_OP_ID=$(aws cloudformation update-stack-instances \
         --stack-set-name workshop-layer1-prerequisites \
-        --accounts $OUTDATED_ACCOUNTS \
+        --accounts "${ACCOUNT_ARRAY[@]}" \
         --regions $AWS_REGION \
         --region "$AWS_REGION" \
         --query 'OperationId' \

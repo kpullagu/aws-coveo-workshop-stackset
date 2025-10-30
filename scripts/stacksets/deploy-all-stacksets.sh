@@ -316,68 +316,72 @@ fix_outdated_instances() {
     log_warning "Found OUTDATED accounts: $OUTDATED_ACCOUNTS"
     log_info "Updating OUTDATED instances..."
     
-    # Update instances for OUTDATED accounts
-    for ACCOUNT_ID in $OUTDATED_ACCOUNTS; do
-        log_info "Updating account: $ACCOUNT_ID"
+    # Convert space-separated accounts to array for batch update
+    local ACCOUNT_ARRAY=($OUTDATED_ACCOUNTS)
+    
+    log_info "Updating ${#ACCOUNT_ARRAY[@]} accounts in batch..."
+    
+    local OPERATION_ID=$(aws cloudformation update-stack-instances \
+        --stack-set-name "$STACKSET_NAME" \
+        --accounts "${ACCOUNT_ARRAY[@]}" \
+        --regions $AWS_REGION \
+        --region "$AWS_REGION" \
+        --query 'OperationId' \
+        --output text 2>/dev/null || echo "")
+    
+    if [ -n "$OPERATION_ID" ]; then
+        log_info "Update operation started: $OPERATION_ID"
         
-        local OPERATION_ID=$(aws cloudformation update-stack-instances \
-            --stack-set-name "$STACKSET_NAME" \
-            --accounts $ACCOUNT_ID \
-            --regions $AWS_REGION \
-            --region "$AWS_REGION" \
-            --query 'OperationId' \
-            --output text 2>/dev/null || echo "")
+        # Calculate total timeout based on number of accounts
+        local TOTAL_TIMEOUT=$((MAX_WAIT_PER_ACCOUNT * ${#ACCOUNT_ARRAY[@]}))
+        log_info "Waiting for operation to complete (max ${TOTAL_TIMEOUT}s for ${#ACCOUNT_ARRAY[@]} accounts)..."
         
-        if [ -n "$OPERATION_ID" ]; then
-            log_info "Update operation started: $OPERATION_ID"
+        local WAIT_START=$(date +%s)
+        local OPERATION_STATUS="RUNNING"
+        
+        while [ "$OPERATION_STATUS" = "RUNNING" ] || [ "$OPERATION_STATUS" = "QUEUED" ]; do
+            local CURRENT_TIME=$(date +%s)
+            local ELAPSED=$((CURRENT_TIME - WAIT_START))
             
-            # Wait for operation to complete with timeout
-            log_info "Waiting for operation to complete (max ${MAX_WAIT_PER_ACCOUNT}s)..."
+            if [ $ELAPSED -gt $TOTAL_TIMEOUT ]; then
+                log_warning "⚠️  Operation timeout after ${TOTAL_TIMEOUT}s"
+                log_warning "Operation may still be running in background"
+                break
+            fi
             
-            local WAIT_START=$(date +%s)
-            local OPERATION_STATUS="RUNNING"
+            # Check operation status
+            OPERATION_STATUS=$(aws cloudformation describe-stack-set-operation \
+                --stack-set-name "$STACKSET_NAME" \
+                --operation-id "$OPERATION_ID" \
+                --region "$AWS_REGION" \
+                --query 'StackSetOperation.Status' \
+                --output text 2>/dev/null || echo "UNKNOWN")
             
-            while [ "$OPERATION_STATUS" = "RUNNING" ] || [ "$OPERATION_STATUS" = "QUEUED" ]; do
-                local CURRENT_TIME=$(date +%s)
-                local ELAPSED=$((CURRENT_TIME - WAIT_START))
+            if [ "$OPERATION_STATUS" = "SUCCEEDED" ]; then
+                log_success "✓ Operation completed successfully for all accounts"
+                break
+            elif [ "$OPERATION_STATUS" = "FAILED" ] || [ "$OPERATION_STATUS" = "STOPPED" ]; then
+                log_error "✗ Operation failed with status: $OPERATION_STATUS"
                 
-                if [ $ELAPSED -gt $MAX_WAIT_PER_ACCOUNT ]; then
-                    log_warning "⚠️  Operation timeout after ${MAX_WAIT_PER_ACCOUNT}s for account $ACCOUNT_ID"
-                    log_warning "Operation may still be running in background"
-                    break
-                fi
-                
-                # Check operation status
-                OPERATION_STATUS=$(aws cloudformation describe-stack-set-operation \
+                # Get failure reason
+                local FAILURE_REASON=$(aws cloudformation describe-stack-set-operation \
                     --stack-set-name "$STACKSET_NAME" \
                     --operation-id "$OPERATION_ID" \
                     --region "$AWS_REGION" \
-                    --query 'StackSetOperation.Status' \
-                    --output text 2>/dev/null || echo "UNKNOWN")
+                    --query 'StackSetOperation.StatusReason' \
+                    --output text 2>/dev/null || echo "Unknown")
                 
-                if [ "$OPERATION_STATUS" = "SUCCEEDED" ]; then
-                    log_success "✓ Operation completed successfully"
-                    break
-                elif [ "$OPERATION_STATUS" = "FAILED" ] || [ "$OPERATION_STATUS" = "STOPPED" ]; then
-                    log_error "✗ Operation failed with status: $OPERATION_STATUS"
-                    
-                    # Get failure reason
-                    local FAILURE_REASON=$(aws cloudformation describe-stack-set-operation \
-                        --stack-set-name "$STACKSET_NAME" \
-                        --operation-id "$OPERATION_ID" \
-                        --region "$AWS_REGION" \
-                        --query 'StackSetOperation.StatusReason' \
-                        --output text 2>/dev/null || echo "Unknown")
-                    
-                    log_error "Reason: $FAILURE_REASON"
-                    break
-                fi
-                
-                log_info "  Status: $OPERATION_STATUS (${ELAPSED}s elapsed)"
-                sleep 10
-            done
+                log_error "Reason: $FAILURE_REASON"
+                break
+            fi
             
-            # Check final instance status
+            log_info "  Status: $OPERATION_STATUS (${ELAPSED}s elapsed)"
+            sleep 15
+        done
+        
+        # Check final status for all accounts
+        log_info "Checking final status for all accounts..."
+        for ACCOUNT_ID in "${ACCOUNT_ARRAY[@]}"; do
             local FINAL_STATUS=$(aws cloudformation list-stack-instances \
                 --stack-set-name "$STACKSET_NAME" \
                 --stack-instance-account "$ACCOUNT_ID" \
@@ -389,28 +393,15 @@ fix_outdated_instances() {
             if [ "$FINAL_STATUS" = "CURRENT" ]; then
                 log_success "✓ Account $ACCOUNT_ID is now CURRENT"
             else
-                log_warning "✗ Account $ACCOUNT_ID status: $FINAL_STATUS"
-                
-                # Get detailed status
-                local DETAILED_STATUS=$(aws cloudformation list-stack-instances \
-                    --stack-set-name "$STACKSET_NAME" \
-                    --stack-instance-account "$ACCOUNT_ID" \
-                    --stack-instance-region "$AWS_REGION" \
-                    --region "$AWS_REGION" \
-                    --query 'Summaries[0].StatusReason' \
-                    --output text 2>/dev/null || echo "Unknown")
-                
-                if [ "$DETAILED_STATUS" != "Unknown" ] && [ "$DETAILED_STATUS" != "None" ]; then
-                    log_info "  Reason: $DETAILED_STATUS"
-                fi
+                log_warning "⚠️  Account $ACCOUNT_ID status: $FINAL_STATUS"
             fi
-        else
-            log_warning "✗ No operation ID returned for account $ACCOUNT_ID"
-        fi
-        
-        # Small delay between accounts to avoid throttling
-        sleep 2
-    done
+        done
+    else
+        log_error "✗ Failed to start update operation"
+        return 1
+    fi
+    
+    log_success "OUTDATED instance update complete"
 }
 
 # Show configuration
