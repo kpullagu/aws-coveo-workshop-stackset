@@ -11,7 +11,7 @@
     🤖 Bedrock Agent
   </div>
   <div style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%); color: white; border-radius: 8px; font-weight: 600; box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3); border: 2px solid #9c27b0;">
-    ⚡ Coveo MCP Server
+    ⚡ AgentCore with Coveo MCP Server Agent
   </div>
 </div>
 

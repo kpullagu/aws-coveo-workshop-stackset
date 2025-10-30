@@ -165,3 +165,36 @@ table {
         font-size: 2rem;
     }
 }
+
+/* Hide "Made with Material for MkDocs" footer */
+.md-footer-meta__inner {
+    display: none;
+}
+
+/* Backend badge styling for labs */
+.backend-badge {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-weight: 600;
+    margin: 1rem 0;
+    color: white;
+}
+
+.backend-badge.coveo {
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+    border: 2px solid #4caf50;
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.backend-badge.bedrock {
+    background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+    border: 2px solid #ff9800;
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+}
+
+.backend-badge.agentcore {
+    background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
+    border: 2px solid #9c27b0;
+    box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3);
+}

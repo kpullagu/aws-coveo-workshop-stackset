@@ -3,7 +3,9 @@
 **Duration**: 20 minutes  
 **Objective**: Confirm access, explore Coveo platform capabilities, and understand direct API integration benefits.
 
-<div class="backend-badge coveo">Coveo Direct API</div>
+<div style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); color: white; border-radius: 8px; font-weight: 600; box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3); border: 2px solid #4caf50; display: inline-block; margin: 1.5rem 0;">
+  🔍 Coveo Direct API
+</div>
 
 ## 🎯 Lab Goals
 

@@ -27,15 +27,15 @@ Master three integration patterns between Coveo and AWS Bedrock to build intelli
 <div class="lab-card">
   <h3>⚡ Lab 3: Integrate Bedrock AgentCore with Coveo MCP Server (20 min)</h3>
   <p>Integrate Bedrock AgentCore with Coveo MCP Server</p>
-  <span class="backend-badge mcp">Coveo MCP Server</span>
+  <span class="backend-badge agentcore">AgentCore with Coveo MCP Server Agent</span>
 </div>
 
 <div class="lab-card">
   <h3>💬 Lab 4: Test Multi-Turn Conversations with Agents (20 min)</h3>
   <p>Test Multi-Turn Conversations with Agents</p>
-  <span class="backend-badge coveo">Coveo</span>
+  <span class="backend-badge coveo">Coveo Direct API</span>
   <span class="backend-badge bedrock">Bedrock Agent</span>
-  <span class="backend-badge mcp">Coveo MCP</span>
+  <span class="backend-badge agentcore">AgentCore with Coveo MCP Server Agent</span>
 </div>
 
 ## ✅ Prerequisites
@@ -52,7 +52,20 @@ Master three integration patterns between Coveo and AWS Bedrock to build intelli
 - Workshop UI URL (App Runner)
 - Login credentials for authentication
 
-**Knowledge Base**: Pre-indexed financial content from 11 authoritative sources including Wikipedia, IRS, FDIC, CFPB, and Federal Reserve Board.
+**Knowledge Base**: Pre-indexed financial content from 11 authoritative sources.
+
+??? info "View All Indexed Sources"
+    - **Wikipedia** - General knowledge and financial concepts
+    - **Investor.gov** - Investment guidance and securities information
+    - **IRS** - Tax information and regulations
+    - **NCUA** - National Credit Union Administration resources
+    - **FinCEN** - Financial Crimes Enforcement Network guidance
+    - **CFPB** - Consumer Financial Protection Bureau resources
+    - **FDIC** - Federal Deposit Insurance Corporation information
+    - **FRB** - Federal Reserve Board policies and guidance
+    - **OCC** - Office of the Comptroller of the Currency regulations
+    - **MyMoney.gov** - Financial literacy and education resources
+    - **FTC** - Federal Trade Commission consumer protection guidance
 
 All exercises are console-based - no command-line tools required.
 
