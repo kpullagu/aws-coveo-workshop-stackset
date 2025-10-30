@@ -105,9 +105,9 @@ extra_javascript:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/example/aws-coveo-workshop
+      link: https://github.com/example/aws-coveo-workshop-stackset
     - icon: fontawesome/brands/aws
-      link: https://aws.amazon.com
+      link: https://www.coveo.com
 
 # Copyright
-copyright: Copyright &copy; 2025 AWS + Coveo
+copyright: Copyright &copy; 2025 Coveo
