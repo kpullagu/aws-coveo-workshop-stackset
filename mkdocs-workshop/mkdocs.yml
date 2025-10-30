@@ -37,6 +37,8 @@ theme:
     - content.code.annotate
   icon:
     repo: fontawesome/brands/github
+  logo: images/coveo-logo.jpg
+  favicon: images/coveo-logo.jpg
 
 # Plugins
 plugins:
@@ -105,9 +107,7 @@ extra_javascript:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/example/aws-coveo-workshop
-    - icon: fontawesome/brands/aws
-      link: https://aws.amazon.com
+      link: https://github.com/kpullagu/aws-coveo-workshop-stackset
 
 # Copyright
-copyright: Copyright &copy; 2025 AWS + Coveo
+copyright: Copyright &copy; 2025 Coveo
