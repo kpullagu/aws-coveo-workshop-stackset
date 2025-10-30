@@ -139,6 +139,32 @@ This workshop deploys a complete AI-powered search solution across multiple AWS 
 
 ---
 
+## 📚 Documentation
+
+**Workshop documentation is available at:** https://kpullagu.github.io/aws-coveo-workshop-stackset/
+
+The documentation includes:
+- 🏠 **Home** - Workshop overview and prerequisites
+- 🔍 **Lab 1** - Direct Coveo API Integration
+- 🤖 **Lab 2** - Bedrock Agent with Coveo Passage Retrieval Tool
+- ⚡ **Lab 3** - Bedrock AgentCore with Coveo MCP Server
+- 💬 **Lab 4** - Multi-Turn Conversations and Use Cases
+- 📖 **Resources** - Architecture diagrams, code references, and additional reading
+
+### Building Documentation Locally
+
+```bash
+cd mkdocs-workshop
+pip install -r requirements.txt
+mkdocs serve
+```
+
+Visit `http://127.0.0.1:8000` to view the documentation locally.
+
+For more details, see [mkdocs-workshop/README.md](mkdocs-workshop/README.md).
+
+---
+
 
 ## 📦 Prerequisites
 

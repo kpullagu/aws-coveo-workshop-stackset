@@ -1,0 +1,14 @@
+# Add these lines to your root .gitignore file (if you have one)
+# Or create a .gitignore in the root if you don't have one
+
+# MkDocs documentation build output
+mkdocs-workshop/site/
+
+# Python (if not already in your root .gitignore)
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+venv/
+env/
+.Python

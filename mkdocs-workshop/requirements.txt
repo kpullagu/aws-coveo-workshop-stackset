@@ -1,0 +1,13 @@
+# MKDocs and theme
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+
+# Plugins
+mkdocs-mermaid2-plugin>=1.1.0
+
+# Extensions
+pymdown-extensions>=10.7.0
+
+# Additional dependencies
+Pygments>=2.17.0
+markdown>=3.5.0

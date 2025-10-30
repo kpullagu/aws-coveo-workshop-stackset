@@ -171,3 +171,9 @@ config/env.schema.json
 # if you only need StackSets deployment.
 .env.stacksets
 workshop-deployment-info.csv
+
+
+# MkDocs documentation build output
+mkdocs-workshop/site/
+
+
