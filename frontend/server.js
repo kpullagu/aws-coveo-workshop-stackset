@@ -293,7 +293,7 @@ app.post('/api/search', async (req, res) => {
         {
           filterFacetCount: true,
           injectionDepth: 1000,
-          numberOfValues: 8,
+          numberOfValues: 50,
           sortCriteria: "automatic",
           resultsMustMatch: "atLeastOneValue",
           type: "specific",
@@ -309,7 +309,7 @@ app.post('/api/search', async (req, res) => {
         {
           filterFacetCount: true,
           injectionDepth: 1000,
-          numberOfValues: 8,
+          numberOfValues: 50,
           sortCriteria: "automatic",
           resultsMustMatch: "atLeastOneValue",
           type: "specific",
@@ -325,7 +325,7 @@ app.post('/api/search', async (req, res) => {
         {
           filterFacetCount: true,
           injectionDepth: 1000,
-          numberOfValues: 8,
+          numberOfValues: 50,
           sortCriteria: "automatic",
           resultsMustMatch: "atLeastOneValue",
           type: "specific",
@@ -341,7 +341,7 @@ app.post('/api/search', async (req, res) => {
         {
           filterFacetCount: true,
           injectionDepth: 1000,
-          numberOfValues: 8,
+          numberOfValues: 50,
           sortCriteria: "automatic",
           resultsMustMatch: "atLeastOneValue",
           type: "specific",
@@ -357,7 +357,7 @@ app.post('/api/search', async (req, res) => {
         {
           filterFacetCount: true,
           injectionDepth: 1000,
-          numberOfValues: 8,
+          numberOfValues: 50,
           sortCriteria: "automatic",
           resultsMustMatch: "atLeastOneValue",
           type: "specific",
@@ -436,7 +436,7 @@ app.post('/api/passages', async (req, res) => {
         {
           filterFacetCount: true,
           injectionDepth: 1000,
-          numberOfValues: 8,
+          numberOfValues: 50,
           sortCriteria: "automatic",
           resultsMustMatch: "atLeastOneValue",
           type: "specific",
@@ -520,7 +520,7 @@ app.post('/api/answer', async (req, res) => {
             {
               filterFacetCount: true,
               injectionDepth: 1000,
-              numberOfValues: 8,
+              numberOfValues: 50,
               sortCriteria: "automatic",
               resultsMustMatch: "atLeastOneValue",
               type: "specific",
@@ -536,7 +536,7 @@ app.post('/api/answer', async (req, res) => {
             {
               filterFacetCount: true,
               injectionDepth: 1000,
-              numberOfValues: 8,
+              numberOfValues: 50,
               sortCriteria: "automatic",
               resultsMustMatch: "atLeastOneValue",
               type: "specific",
@@ -552,7 +552,7 @@ app.post('/api/answer', async (req, res) => {
             {
               filterFacetCount: true,
               injectionDepth: 1000,
-              numberOfValues: 8,
+              numberOfValues: 50,
               sortCriteria: "automatic",
               resultsMustMatch: "atLeastOneValue",
               type: "specific",
@@ -616,7 +616,7 @@ app.post('/api/answer', async (req, res) => {
             {
               filterFacetCount: true,
               injectionDepth: 1000,
-              numberOfValues: 8,
+              numberOfValues: 50,
               sortCriteria: "automatic",
               resultsMustMatch: "atLeastOneValue",
               type: "specific",
@@ -738,7 +738,7 @@ app.post('/api/chat', async (req, res) => {
             {
               filterFacetCount: true,
               injectionDepth: 1000,
-              numberOfValues: 8,
+              numberOfValues: 50,
               sortCriteria: "automatic",
               resultsMustMatch: "atLeastOneValue",
               type: "specific",
@@ -803,7 +803,7 @@ app.post('/api/chat', async (req, res) => {
             {
               filterFacetCount: true,
               injectionDepth: 1000,
-              numberOfValues: 8,
+              numberOfValues: 50,
               sortCriteria: "automatic",
               resultsMustMatch: "atLeastOneValue",
               type: "specific",

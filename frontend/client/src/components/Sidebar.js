@@ -163,6 +163,28 @@ const FacetList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 350px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  /* Custom scrollbar styling */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
 `;
 
 const FacetItem = styled(motion.div)`
@@ -333,7 +355,7 @@ const Sidebar = ({ facets, selectedFacets, onFacetChange, onClearFilters, totalR
 
       {facets.map((facet) => {
         const isExpanded = expandedFacets[facet.field];
-        const visibleValues = isExpanded ? facet.values.slice(0, 10) : facet.values.slice(0, 5);
+        const visibleValues = isExpanded ? facet.values : facet.values.slice(0, 5);
         
         return (
           <FacetGroup key={facet.field}>
