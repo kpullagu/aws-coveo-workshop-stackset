@@ -1,15 +1,23 @@
 """
 Coveo Passage Retrieval API Proxy Lambda.
 
-This Lambda function handles passage retrieval requests with the full Coveo Passages API payload format.
+This Lambda function proxies requests to the Coveo Passages API to retrieve relevant
+text excerpts from indexed content. It uses semantic search to find the most relevant
+passages for a given query.
+
+Key Features:
+    - Retrieves relevant passages using Coveo's semantic search
+    - Returns ranked passages with source attribution
+    - Supports full Coveo Passages API payload format
+    - Used by the frontend for direct Coveo integration mode
 
 Environment Variables (Required):
     - COVEO_ORG_ID: Coveo organization identifier
-    - COVEO_SEARCH_API_KEY: Coveo API key
+    - COVEO_SEARCH_API_KEY: Coveo API key with search permissions
 
 Environment Variables (Optional):
     - COVEO_PLATFORM_URL: Coveo Platform API base URL (default: https://platform.cloud.coveo.com)
-    - COVEO_SEARCH_HUB: Search Hub identifier (default: aws-workshop)
+    - COVEO_SEARCH_HUB: Search Hub identifier for analytics (default: aws-workshop)
     - LOG_LEVEL: Logging level (default: INFO)
 """
 

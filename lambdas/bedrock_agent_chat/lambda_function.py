@@ -1,39 +1,60 @@
 """
-Bedrock Agent Chat Adapter Lambda with Coveo Passages Integration.
+Bedrock Agent Chat Handler Lambda.
 
-This Lambda function:
-1. Receives full Coveo search payload from frontend
-2. Calls Coveo Passages API to retrieve relevant passages
-3. Invokes Bedrock Agent with retrieved passages for grounded answers
-4. Maintains sessionId for multi-turn conversation memory
+This Lambda function serves as the handler for Bedrock Agent invocations with multi-turn
+conversation memory support. It does NOT pre-fetch passages - instead, it allows the
+Bedrock Agent to autonomously decide when to use the Coveo Passage Retrieval tool.
+
+Key Features:
+1. Invokes AWS Bedrock Agent with user questions
+2. Maintains session-based memory for multi-turn conversations
+3. Supports cross-session memory using stable memoryId (derived from Cognito identity)
+4. Allows agent to autonomously call Coveo Passage Retrieval tool when needed
+5. Handles both single-turn and multi-turn conversation modes
+6. Processes streaming responses from Bedrock Agent
 
 Environment Variables (Required):
-    - STACK_PREFIX: Stack prefix for SSM parameters
+    - STACK_PREFIX: Stack prefix for SSM parameters (e.g., 'workshop')
 
 Environment Variables (Optional):
-    - AWS_REGION: AWS region for Bedrock and SSM (default: us-east-1)
+    - AWS_DEFAULT_REGION: AWS region for Bedrock and SSM (default: us-east-1)
     - LOG_LEVEL: Logging level (default: INFO)
 
-Request Body (Full Coveo Payload):
+Request Body:
     {
-        "q": "What are investment basics?",
-        "sessionId": "uuid-v4-session-id",
-        "backendMode": "bedrockAgent",
-        "pipeline": "...",
-        "pipelineRuleParameters": {...},
-        "searchHub": "...",
-        "facets": [...],
-        "fieldsToInclude": [...],
-        // ... full Coveo search configuration
+        "query": "What are investment basics?",           # User question (required)
+        "sessionId": "uuid-v4-session-id",               # Session ID for continuity (optional)
+        "memoryId": "user-specific-id",                  # Memory ID for cross-session (optional)
+        "conversationType": "multi-turn",                # "multi-turn" or "single-turn" (optional)
+        "endSession": false,                             # Set to true to finalize session (optional)
+        "backendMode": "bedrockAgent"                    # Backend identifier (optional)
     }
 
 Response:
     {
-        "answer": "Grounded answer based on retrieved passages",
-        "citations": [...],
+        "response": "AI-generated answer with tool usage",
+        "answer": "Same as response (for compatibility)",
+        "citations": [                                   # Citations from agent tool calls
+            {
+                "title": "Source title",
+                "uri": "Source URI",
+                "text": "Excerpt preview"
+            }
+        ],
         "sessionId": "preserved-session-id",
-        "confidence": 0.85
+        "memoryId": "stable-memory-id",
+        "sessionEnded": false,
+        "confidence": 0.90,
+        "usedTooling": ["bedrock.agent"]
     }
+
+Agent Tool Integration:
+    The Bedrock Agent has access to the Coveo Passage Retrieval tool, which it calls
+    autonomously when it determines that external knowledge is needed to answer the
+    user's question. This allows the agent to:
+    - Answer memory/history questions directly without tool calls
+    - Retrieve passages from Coveo only when knowledge is required
+    - Provide grounded responses with source citations
 """
 
 import json

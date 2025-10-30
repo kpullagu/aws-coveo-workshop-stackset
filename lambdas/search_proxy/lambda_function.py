@@ -1,12 +1,20 @@
 """
-Unified Coveo Search Lambda for Workshop.
+Coveo Search API Proxy Lambda.
 
-This Lambda function handles search requests with the full Coveo Search API payload format.
-It supports both 'coveo' and 'bedrockAgent' modes with the same search functionality.
+This Lambda function proxies requests to the Coveo Search API to perform full-text
+search across indexed content. It returns ranked search results with facets, snippets,
+and metadata.
+
+Key Features:
+    - Performs full-text search using Coveo's Search API
+    - Returns ranked results with relevance scoring
+    - Supports faceted navigation and filtering
+    - Provides query suggestions and result snippets
+    - Used by the frontend for direct Coveo integration mode
 
 Environment Variables (Required):
     - COVEO_ORG_ID: Coveo organization identifier
-    - COVEO_SEARCH_API_KEY: Coveo API key
+    - COVEO_SEARCH_API_KEY: Coveo API key with search permissions
 
 Environment Variables (Optional):
     - COVEO_PLATFORM_URL: Coveo Platform API base URL (default: https://platform.cloud.coveo.com)

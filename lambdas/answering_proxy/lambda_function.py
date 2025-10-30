@@ -1,17 +1,24 @@
 """
 Coveo Answering API Proxy Lambda.
 
-This Lambda function handles answer generation requests with the full Coveo Answer API payload format.
-Supports both 'coveo' and 'bedrockAgent' modes.
+This Lambda function proxies requests to the Coveo Answer API to generate AI-powered
+answers based on indexed content. It receives user questions and returns comprehensive
+answers with source citations.
+
+Key Features:
+    - Generates AI answers using Coveo's Answer API
+    - Provides source citations for answer verification
+    - Supports full Coveo Answer API payload format
+    - Used by the frontend for direct Coveo integration mode
 
 Environment Variables (Required):
     - COVEO_ORG_ID: Coveo organization identifier
-    - COVEO_SEARCH_API_KEY: Coveo API key
-    - COVEO_ANSWER_CONFIG_ID: Answer configuration ID
+    - COVEO_SEARCH_API_KEY: Coveo API key with search permissions
+    - COVEO_ANSWER_CONFIG_ID: Answer configuration ID from Coveo platform
 
 Environment Variables (Optional):
     - COVEO_PLATFORM_URL: Coveo Platform API base URL (default: https://platform.cloud.coveo.com)
-    - COVEO_SEARCH_HUB: Search Hub identifier (default: aws-workshop)
+    - COVEO_SEARCH_HUB: Search Hub identifier for analytics (default: aws-workshop)
     - LOG_LEVEL: Logging level (default: INFO)
 """
 
