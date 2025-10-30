@@ -600,3 +600,191 @@ The script deploys to multiple accounts in parallel:
 
 ---
 
+
+
+---
+
+## 🧹 Cleanup
+
+### Complete StackSet Destruction
+
+To completely remove all workshop resources from all AWS accounts, use the cleanup script:
+
+```bash
+bash scripts/stacksets/destroy-all-stacksets-v2.sh
+```
+
+### What Gets Deleted
+
+The cleanup script removes resources in reverse order of deployment:
+
+#### 1. **Layer 4: UI (App Runner)**
+   - App Runner services
+   - CloudWatch Log groups
+   - IAM roles
+
+#### 2. **Layer 3: AI Services**
+   - Bedrock AgentCore Runtimes (Agent and MCP Server)
+   - SSM Parameters
+   - CloudWatch Log groups
+   - IAM roles
+
+#### 3. **Layer 2: Core Infrastructure**
+   - Lambda functions
+   - API Gateway
+   - Cognito User Pools
+   - CloudWatch Log groups
+   - IAM roles
+
+#### 4. **Layer 1: Prerequisites**
+   - S3 Buckets (with all objects)
+   - ECR Repositories (with all images)
+   - IAM roles
+   - Replication configurations
+
+#### 5. **Master Account Resources**
+   - ECR Repositories (MCP Server, Agent, UI images)
+   - S3 Bucket (Lambda packages, templates)
+   - Lambda Layer
+   - StackSet instances and stacks
+
+### Cleanup Process
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Step 1: Delete StackSet Instances (Layer 4 → Layer 1)      │
+│  • Removes stacks from all child accounts                   │
+│  • Waits for complete deletion                              │
+│  • Handles dependencies automatically                        │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Step 2: Delete StackSets                                    │
+│  • Removes StackSet definitions                             │
+│  • Cleans up CloudFormation metadata                        │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Step 3: Clean Master Account Resources                      │
+│  • Empties and deletes S3 buckets                           │
+│  • Deletes ECR repositories and images                      │
+│  • Removes Lambda layers                                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Cleanup Timeline
+
+```
+Total Time: 30-45 minutes
+
+Layer 4 Deletion:    ████████░░░░░░░░░░░░  8 min
+Layer 3 Deletion:    ██████████░░░░░░░░░░ 10 min
+Layer 2 Deletion:    ████████░░░░░░░░░░░░  8 min
+Layer 1 Deletion:    ██████░░░░░░░░░░░░░░  6 min
+Master Cleanup:      ████░░░░░░░░░░░░░░░░  4 min
+```
+
+### Important Notes
+
+⚠️ **Warning**: This operation is **irreversible**. All data will be permanently deleted.
+
+✅ **Safe to Run**: The script includes safety checks and confirmations
+
+🔄 **Idempotent**: Can be run multiple times safely if cleanup fails
+
+📊 **Progress Tracking**: Shows real-time progress for each account
+
+### Manual Cleanup (If Script Fails)
+
+If the automated cleanup script fails, you can manually delete resources:
+
+#### 1. Delete StackSet Instances
+```bash
+aws cloudformation delete-stack-instances \
+  --stack-set-name StackSet-workshop-layer4-ui \
+  --accounts $(aws organizations list-accounts --query 'Accounts[?Status==`ACTIVE`].Id' --output text) \
+  --regions us-east-1 \
+  --no-retain-stacks
+```
+
+#### 2. Delete StackSets
+```bash
+aws cloudformation delete-stack-set --stack-set-name StackSet-workshop-layer4-ui
+aws cloudformation delete-stack-set --stack-set-name StackSet-workshop-layer3-ai-services
+aws cloudformation delete-stack-set --stack-set-name StackSet-workshop-layer2-core
+aws cloudformation delete-stack-set --stack-set-name StackSet-workshop-layer1-prerequisites
+```
+
+#### 3. Clean Master Account
+```bash
+# Empty and delete S3 bucket
+aws s3 rm s3://workshop-master-artifacts-${MASTER_ACCOUNT_ID} --recursive
+aws s3 rb s3://workshop-master-artifacts-${MASTER_ACCOUNT_ID}
+
+# Delete ECR repositories
+aws ecr delete-repository --repository-name workshop-coveo-mcp-server --force
+aws ecr delete-repository --repository-name workshop-coveo-agent --force
+aws ecr delete-repository --repository-name workshop-ui --force
+
+# Delete Lambda layer
+aws lambda delete-layer-version --layer-name workshop-shared-layer --version-number 1
+```
+
+### Verification
+
+After cleanup, verify all resources are deleted:
+
+```bash
+# Check StackSets
+aws cloudformation list-stack-sets --status ACTIVE
+
+# Check S3 buckets
+aws s3 ls | grep workshop
+
+# Check ECR repositories
+aws ecr describe-repositories | grep workshop
+
+# Check Lambda layers
+aws lambda list-layers | grep workshop
+```
+
+### Troubleshooting Cleanup
+
+#### Issue: StackSet deletion stuck
+**Solution**: Check for resources with deletion protection enabled
+```bash
+aws cloudformation describe-stack-set --stack-set-name <stackset-name>
+```
+
+#### Issue: S3 bucket not empty
+**Solution**: Force empty the bucket
+```bash
+aws s3 rm s3://<bucket-name> --recursive --force
+```
+
+#### Issue: ECR images still present
+**Solution**: Delete all images first
+```bash
+aws ecr batch-delete-image \
+  --repository-name <repo-name> \
+  --image-ids "$(aws ecr list-images --repository-name <repo-name> --query 'imageIds[*]' --output json)"
+```
+
+---
+
+## 📞 Support
+
+For issues or questions:
+- Check the [Troubleshooting](#-troubleshooting) section
+- Review [Workshop Documentation](https://kpullagu.github.io/aws-coveo-workshop-stackset/)
+- Open an issue on GitHub
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**Built with ❤️ for AWS and Coveo workshops**
