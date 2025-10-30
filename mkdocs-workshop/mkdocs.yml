@@ -108,6 +108,8 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/kpullagu/aws-coveo-workshop-stackset
+    - icon: fontawesome/brands/coveo
+      link: https://www.coveo.com
 
 # Copyright
 copyright: Copyright &copy; 2025 Coveo
