@@ -106,7 +106,7 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/example/aws-coveo-workshop-stackset
-    - icon: fontawesome/brands/aws
+    - icon: fontawesome/brands/coveo
       link: https://www.coveo.com
 
 # Copyright
