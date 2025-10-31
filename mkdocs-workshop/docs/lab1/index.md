@@ -1,11 +1,8 @@
-# Lab 1: Environment Check + Coveo Discovery
+<h1 style="color: #4caf50; border-left: 6px solid #4caf50; padding-left: 1rem; background: linear-gradient(90deg, rgba(76, 175, 80, 0.1) 0%, transparent 100%); padding: 1rem; border-radius: 4px;">🔍 Lab 1: Environment Check + Coveo Discovery</h1>
 
+**Pattern**: Coveo Direct API  
 **Duration**: 20 minutes  
 **Objective**: Confirm access, explore Coveo platform capabilities, and understand direct API integration benefits.
-
-<div style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); color: white; border-radius: 8px; font-weight: 600; box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3); border: 2px solid #4caf50; display: inline-block; margin: 1.5rem 0;">
-  🔍 Coveo Direct API
-</div>
 
 ## 🎯 Lab Goals
 
@@ -257,7 +254,7 @@ Scroll down to see the **Relevant Passages** section:
   <h4>📊 Search Results</h4>
   <ul>
     <li>✅ AI Answer by Coveo displayed</li>
-    <li>✅ Top 5 Passages relevant to the query dispalyed</li>
+    <li>✅ Top 5 Passages relevant to the query displayed</li>
     <li>✅ 10-20 search results displayed</li>
     <li>✅ Query terms highlighted in snippets</li>
     <li>✅ Source names visible (CFPB, IRS, etc.)</li>
@@ -363,7 +360,7 @@ capital gain and dividend reinvestment strategy
 
 ### Ideal Use Cases for Coveo Customers
 
-**Best for**: High-volume, low-latency search requirements where you need direct control over Coveo's search, passage retrieval, and answer APIs.
+**Best for**: Use case where you need direct control over Coveo's search, passage retrieval, and answer APIs with finer control over the UI. 
 
 <div class="lab-card">
   <h4>🏢 Knowledge Portals & Intranets</h4>

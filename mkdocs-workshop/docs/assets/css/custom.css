@@ -1,5 +1,22 @@
 /* Custom styles for AWS + Coveo Workshop */
 
+/* Coveo logo styling - make it bigger */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+    width: auto !important;
+    height: 64px !important;
+    max-height: 64px !important;
+}
+
+.md-header__button.md-logo {
+    padding: 0.3rem !important;
+}
+
+/* Adjust header height to accommodate larger logo */
+.md-header {
+    min-height: 4rem !important;
+}
+
 /* Hero section styling */
 .hero {
     text-align: center;

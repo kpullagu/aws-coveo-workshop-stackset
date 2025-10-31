@@ -352,50 +352,6 @@ Based on testing:
 
 ---
 
-## 🎓 Success Stories
-
-### Example 1: Regional Bank
-
-**Challenge**: 50,000 monthly support calls, high costs
-
-**Solution**: Bedrock Agent with Coveo passages
-
-**Results**:
-
-- 45% deflection rate
-- 4.5/5 customer satisfaction
-- 3-month implementation
-
----
-
-### Example 2: Investment Firm
-
-**Challenge**: Personalized advice at scale
-
-**Solution**: AgentCore + MCP with cross-session memory
-
-**Results**:
-- 80% client engagement
-- 25% increase in AUM
-- 4.8/5 client satisfaction
-- Ongoing relationship building
-
----
-
-### Example 3: Credit Union
-
-**Challenge**: Member education and self-service
-
-**Solution**: Coveo Direct API for knowledge portal
-
-**Results**:
-
-- 60% reduction in basic inquiries
-- 24/7 availability
-- 2-week implementation
-
----
-
 ## 💡 Best Practices by Use Case
 
 ### For FAQ Bots (Coveo Direct)
@@ -455,12 +411,6 @@ Based on testing:
 
 ## 📚 Additional Resources
 
-### AWS Resources
-
-- [Bedrock Agents Best Practices](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-best-practices.html)
-- [AgentCore Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html)
-- [Cost Optimization Guide](https://aws.amazon.com/bedrock/pricing/)
-
 ### Coveo Resources
 
 - [Coveo Platform Overview](https://docs.coveo.com/)
@@ -472,6 +422,14 @@ Based on testing:
 - [Architecture Diagrams](../resources/diagrams.md)
 - [Code Repository](../resources/code.md)
 - [Additional Reading](../resources/reading.md)
+
+### AWS Resources
+
+- [Bedrock Agents Best Practices](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-best-practices.html)
+- [AgentCore Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html)
+- [Cost Optimization Guide](https://aws.amazon.com/bedrock/pricing/)
+
+
 
 ---
 
@@ -510,7 +468,6 @@ Congratulations on completing all 4 labs! You now have:
 
 ### Stay Connected
 
-- Follow AWS Bedrock updates
 - Subscribe to Coveo blog
 - Join user communities
 - Attend future workshops

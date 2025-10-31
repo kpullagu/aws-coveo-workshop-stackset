@@ -1,11 +1,8 @@
-# Lab 2: Bedrock Agent + Coveo Passage Retrieval API
+<h1 style="color: #ff9800; border-left: 6px solid #ff9800; padding-left: 1rem; background: linear-gradient(90deg, rgba(255, 152, 0, 0.1) 0%, transparent 100%); padding: 1rem; border-radius: 4px;">🤖 Lab 2: Bedrock Agent + Coveo Passage Retrieval API</h1>
 
+**Pattern**: Bedrock Agent  
 **Duration**: 20 minutes  
 **Objective**: Integrate Coveo Passage Retrieval API with AWS Bedrock Agent for conversational AI with grounded responses.
-
-<div style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border-radius: 8px; font-weight: 600; box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3); border: 2px solid #ff9800; display: inline-block; margin: 1.5rem 0;">
-  🤖 Bedrock Agent
-</div>
 
 ## 🎯 Lab Goals
 
@@ -151,16 +148,17 @@ sequenceDiagram
 #### Review Agent Configuration
 
 **Agent Details**:
-- **Name**: workshop-coveo-agent
-- **Description**: Bedrock Agent with Coveo Passage Retrieval for Finance Knowledge Hub
-- **Foundation Model**: amazon.nova-lite-v1:0
 
+- **Name**: `workshop-coveo-agent`
+- **Description**: Bedrock Agent with Coveo Passage Retrieval for Finance Knowledge Hub
+- **Foundation Model**: `amazon.nova-lite-v1:0`
 
 **Action Group**:
-- **Name**: CoveoPassageRetrieval
+
+- **Name**: `CoveoPassageRetrieval`
 - **Description**: Retrieves relevant passages from Coveo knowledge base
-- **Lambda Function**: workshop-passage-tool
-- **Status of the Action Group**: Enabled
+- **Lambda Function**: `workshop-passage-tool`
+- **Status**: Enabled
 
 
 !!! info "Do not Change anything on this page"

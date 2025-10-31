@@ -47,6 +47,233 @@ graph TB
 
 ---
 
+## 🔑 Memory ID vs Actor ID: Technical Deep Dive
+
+### What is Cognito JWT `sub` Claim?
+
+**JWT (JSON Web Token)** is a secure way to transmit information between parties. When a user logs in through AWS Cognito, they receive a JWT token that contains various "claims" (pieces of information) about the user.
+
+**The `sub` Claim**:
+
+- **Full Name**: "Subject" identifier
+- **Purpose**: Unique, permanent identifier for a user in Cognito
+- **Format**: UUID (e.g., `"abc-123-def-456-ghi-789"`)
+- **Stability**: Never changes for a user, even if they change email or username
+- **Uniqueness**: Guaranteed unique across all users in the Cognito User Pool
+
+**Example JWT Token Structure**:
+```json
+{
+  "sub": "abc-123-def-456-ghi-789",           // ← Unique user ID (never changes)
+  "email": "user@example.com",                 // Can change
+  "cognito:username": "john.doe",              // Can change
+  "email_verified": true,
+  "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXX",
+  "aud": "2uf2g5mgnn6mr3rutuncsu8lut",        // Client ID
+  "token_use": "id",
+  "auth_time": 1704067200,
+  "exp": 1704070800                            // Expiration time
+}
+```
+
+**Why Use `sub` for Memory?**
+
+| Reason | Explanation |
+|--------|-------------|
+| **Permanence** | Never changes, even if user updates email or username |
+| **Uniqueness** | Guaranteed unique across all users |
+| **Privacy** | Not personally identifiable (unlike email) |
+| **Reliability** | Always present in Cognito JWT tokens |
+| **Consistency** | Same value across all login sessions |
+
+**Lifecycle Example**:
+
+```
+Day 1: User creates account
+  → Cognito assigns: sub = "abc-123-def-456"
+  → User email: "john@example.com"
+
+Day 30: User changes email to "john.doe@company.com"
+  → sub = "abc-123-def-456" (UNCHANGED)
+  → All previous conversations still accessible
+
+Day 60: User changes username
+  → sub = "abc-123-def-456" (UNCHANGED)
+  → All previous conversations still accessible
+
+Day 90: User logs in from different device
+  → sub = "abc-123-def-456" (SAME)
+  → All conversations accessible on new device
+```
+
+### Understanding User Identity Across Sessions
+
+Both Bedrock Agent and AgentCore use unique identifiers to track users across sessions, but they implement them differently:
+
+| Aspect | Memory ID (Bedrock Agent) | Actor ID (AgentCore) |
+|--------|---------------------------|----------------------|
+| **Source** | Cognito JWT `sub` claim | Cognito JWT `sub` claim |
+| **Processing** | ✅ SHA-256 hashed | ❌ Raw value |
+| **Purpose** | User identification across sessions | User identification across sessions |
+| **Scope** | Cross-session memory | Cross-session memory |
+| **PII Protection** | Yes (hashed) | No (raw sub) |
+| **Length** | 64 characters (hash) | Variable (UUID format) |
+| **Storage Namespace** | `/memories/{memoryId}` | `/summaries/{actorId}/{sessionId}` |
+
+### JWT `sub` Flow Through the System
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Cognito
+    participant Frontend
+    participant Backend
+    participant Agent
+    participant Memory
+    
+    User->>Cognito: Login (username/password)
+    Cognito->>Cognito: Authenticate user
+    Cognito->>Frontend: JWT Token (contains sub)
+    Note over Frontend: Token stored in localStorage
+    
+    User->>Frontend: Send chat message
+    Frontend->>Backend: API request + JWT Token
+    Backend->>Backend: Decode JWT, extract sub
+    
+    alt Bedrock Agent
+        Backend->>Backend: Hash sub → Memory ID
+        Backend->>Agent: Invoke with Memory ID
+        Agent->>Memory: Store/Retrieve using Memory ID
+    else AgentCore Runtime
+        Backend->>Backend: Use raw sub → Actor ID
+        Backend->>Agent: Invoke with Actor ID
+        Agent->>Memory: Store/Retrieve using Actor ID
+    end
+    
+    Memory-->>Agent: Previous conversations
+    Agent-->>Backend: Response with context
+    Backend-->>Frontend: Formatted response
+    Frontend-->>User: Answer with memory
+```
+
+### How Memory ID Works (Bedrock Agent)
+
+**Extraction Priority**:
+
+1. Explicit `memoryId` from request body (if provided)
+2. **Cognito `sub` from JWT** (SHA-256 hashed) ← **Used in workshop**
+3. Cognito `email` from JWT (SHA-256 hashed)
+4. Fallback to "anonymous"
+
+**Example**:
+```python
+# Backend Lambda (Bedrock Agent)
+def get_memory_id_from_token(token):
+    decoded = jwt.decode(token)
+    cognito_sub = decoded.get('sub')  # e.g., "abc-123-def-456"
+    
+    # Hash for privacy and consistency
+    memory_id = hashlib.sha256(cognito_sub.encode()).hexdigest()
+    # Result: "a1b2c3d4e5f6..." (64 chars)
+    
+    return memory_id
+```
+
+**Why Hashing?**
+
+- Normalizes length (always 64 characters)
+- Protects PII (Cognito sub is not exposed)
+- Consistent identifier across all sessions
+
+### How Actor ID Works (AgentCore)
+
+**Extraction Priority**:
+
+1. **Cognito `sub` from JWT** (raw value) ← **Used in workshop**
+2. `userId` or `user_id` from request body (if provided)
+3. Fallback to "anonymous"
+
+**Example**:
+```python
+# Backend Lambda (AgentCore)
+def get_actor_id_from_token(token):
+    decoded = jwt.decode(token)
+    actor_id = decoded.get('sub')  # e.g., "abc-123-def-456"
+    
+    # No hashing - use raw value
+    return actor_id
+```
+
+**Why No Hashing?**
+
+- AgentCore expects raw identifiers
+- Simpler implementation
+- Direct mapping to Cognito user
+
+### Session ID vs Memory ID/Actor ID
+
+| Identifier | Purpose | Lifecycle | Storage |
+|------------|---------|-----------|---------|
+| **Session ID** | Tracks single conversation | Changes on "End Chat" or logout | `localStorage` (frontend) |
+| **Memory ID** | Identifies user (Bedrock Agent) | Stable across all sessions | Derived from JWT (backend) |
+| **Actor ID** | Identifies user (AgentCore) | Stable across all sessions | Derived from JWT (backend) |
+
+### Session ID Creation Timeline
+
+**Bedrock Agent**:
+
+| Event | Session ID | Memory ID | Memory Access |
+|-------|-----------|-----------|---------------|
+| **First chat message** | Generated → `localStorage` | From JWT (`sub` hashed) | No previous memory |
+| **Page refresh** | Same (from `localStorage`) | Same (from JWT) | Same session continues |
+| **"End Chat" clicked** | NEW (generated) | Same (from JWT) | Can recall previous session |
+| **User logs out** | Cleared from `localStorage` | N/A (not stored locally) | N/A |
+| **User logs back in** | NEW (generated) | Same (from JWT) | Can recall all previous sessions |
+
+**AgentCore Runtime**:
+
+| Event | Session ID | Actor ID | Memory Access |
+|-------|-----------|----------|---------------|
+| **First chat message** | Generated → `localStorage` | From JWT (`sub` raw) | No previous memory |
+| **Page refresh** | Same (from `localStorage`) | Same (from JWT) | Same session continues |
+| **"End Chat" clicked** | NEW (generated) | Same (from JWT) | Can recall previous session |
+| **User logs out** | Cleared from `localStorage` | N/A (not stored locally) | N/A |
+| **User logs back in** | NEW (generated) | Same (from JWT) | Can recall all previous sessions |
+
+### Memory Hierarchy Visualization
+
+```
+User (Cognito Identity: sub = "abc-123-def-456")
+│
+├── Bedrock Agent
+│   ├── Memory ID: "a1b2c3d4..." (SHA-256 hash of sub)
+│   │   ├── Session 1 (Monday): sessionId = "sess-001"
+│   │   │   ├── Turn 1: "What is a 401k?"
+│   │   │   └── Turn 2: "What are contribution limits?"
+│   │   │
+│   │   ├── Session 2 (Tuesday): sessionId = "sess-002"
+│   │   │   ├── Turn 1: "What did we discuss?" ← Recalls Session 1
+│   │   │   └── Turn 2: "Tell me about Roth IRA"
+│   │   │
+│   │   └── Session 3 (Wednesday): sessionId = "sess-003"
+│   │       └── Turn 1: "Summarize our discussions" ← Recalls Sessions 1 & 2
+│
+└── AgentCore Runtime
+    ├── Actor ID: "abc-123-def-456" (raw sub)
+    │   ├── Session 1 (Monday): session_id = "sess-101"
+    │   │   ├── Turn 1: "What is FDIC insurance?"
+    │   │   └── Turn 2: "How much coverage?"
+    │   │
+    │   ├── Session 2 (Tuesday): session_id = "sess-102"
+    │   │   ├── Turn 1: "What did we discuss?" ← Recalls Session 1
+    │   │   └── Turn 2: "Tell me about NCUA"
+    │   │
+    │   └── Session 3 (Wednesday): session_id = "sess-103"
+    │       └── Turn 1: "Summarize our discussions" ← Recalls Sessions 1 & 2
+```
+
+---
+
 ## 🔄 How Cross-Session Memory Works
 
 ### Memory Lifecycle
@@ -167,17 +394,126 @@ sequenceDiagram
 
 ---
 
+## 🔚 "End Chat & Save Memory" Feature
+
+### Purpose
+
+Allows users to explicitly end a conversation and start fresh while preserving the ability to recall previous conversations.
+
+### How It Works
+
+**Frontend (ChatBot.js)**:
+```javascript
+const handleEndSession = async () => {
+  // 1. Send endSession=true to backend
+  await chatAPI(
+    "End session",
+    currentSessionId,
+    backendMode,
+    null,
+    true  // endSession = true
+  );
+  
+  // 2. Generate new session ID
+  const newSessionId = uuidv4();
+  setCurrentSessionId(newSessionId);
+  
+  // 3. Update localStorage
+  onSessionEnd(newSessionId);
+  
+  // 4. Clear chat messages
+  setMessages([/* welcome message */]);
+};
+```
+
+**Backend (Bedrock Agent)**:
+```python
+invoke_params = {
+    'agentId': agent_id,
+    'agentAliasId': alias_id,
+    'sessionId': session_id,      # Current session
+    'inputText': question,
+    'memoryId': memory_id,         # User identity (hashed)
+    'endSession': True             # Finalize & summarize
+}
+
+response = bedrock_agent_runtime.invoke_agent(**invoke_params)
+# Agent summarizes session and stores in memory
+```
+
+**Backend (AgentCore Runtime)**:
+```python
+payload = {
+    "text": prompt,
+    "session_id": session_id,      # Current session
+    "actor_id": actor_id,          # User identity (raw)
+    "end_session": True            # Finalize & summarize
+}
+
+response = requests.post(agentcore_url, json=payload)
+# AgentCore summarizes session and stores in memory
+```
+
+### What Happens Step-by-Step
+
+**1. User clicks "End Chat & Save Memory"**
+
+- Frontend sends `endSession=true` to backend
+- Current session ID: `"abc-123"`
+
+**2. Backend finalizes session**
+
+- Bedrock Agent/AgentCore summarizes conversation
+- Stores summary in memory under Memory ID/Actor ID
+- Session `"abc-123"` is now complete
+
+**3. Frontend generates new session**
+
+- New session ID: `"def-456"`
+- Updates `localStorage`
+- Clears chat messages
+
+**4. Next message in new session**
+
+- Uses new session ID: `"def-456"`
+- Same Memory ID/Actor ID (from JWT)
+- Agent can recall previous session `"abc-123"`
+
+### Behavior Comparison
+
+| Aspect | Bedrock Agent | AgentCore Runtime |
+|--------|---------------|-------------------|
+| **Button Click** | Sends `endSession=true` | Sends `end_session=true` |
+| **Backend Action** | Finalizes session, summarizes | Finalizes session, summarizes |
+| **Session ID** | Changes (new UUID) | Changes (new UUID) |
+| **Memory ID/Actor ID** | Stays the same | Stays the same |
+| **Memory Storage** | Bedrock Agent Memory | AgentCore Memory Service |
+| **Recall Ability** | ✅ "What did we discuss?" | ✅ "What did we discuss?" |
+
+---
+
 ## 📊 Memory Configuration
+
+### Bedrock Agent Memory Settings
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| **Memory Type** | Session + Cross-session | Both types enabled |
+| **Memory ID Source** | Cognito `sub` (hashed) | SHA-256 hash of user ID |
+| **Session Timeout** | Configurable | Inactivity timeout |
+| **Cross-session Retention** | 7 days (default) | How long memories persist |
+| **Storage** | AWS Bedrock Agent Memory | Managed service |
 
 ### AgentCore Memory Settings
 
 | Setting | Value | Description |
 |---------|-------|-------------|
 | **Memory Type** | Session + Cross-session | Both types enabled |
+| **Actor ID Source** | Cognito `sub` (raw) | Direct user ID from JWT |
 | **Max Tokens** | 4096 | Context window size |
 | **Session Timeout** | 2 hours | Inactivity timeout |
-| **Cross-session Retention** | 7 days | How long memories persist |
-| **Memory ID** | User-specific | Unique per user |
+| **Cross-session Retention** | 7 days (default) | How long memories persist |
+| **Storage** | AgentCore Memory Service | Managed service |
 
 ### Memory Storage
 
@@ -200,6 +536,58 @@ sequenceDiagram
 ---
 
 ## 🔒 Memory Security and Privacy
+
+### Session Management on Logout
+
+**Secure Logout Implementation**:
+
+When a user logs out, the application properly clears all session data to prevent session reuse:
+
+```javascript
+// AuthProvider.js - logout() function
+const logout = () => {
+  // Clear authentication tokens
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('access_token');
+  
+  // Clear session IDs for security (prevent session reuse)
+  localStorage.removeItem('bedrock_session_id');
+  localStorage.removeItem('coveo_mcp_session_id');
+  
+  setToken(null);
+  setUser(null);
+  
+  // Redirect to Cognito logout
+  window.location.href = logoutUrl;
+};
+```
+
+**Security Benefits**:
+
+- ✅ **Session IDs cleared** on logout
+- ✅ **New session IDs generated** on next login
+- ✅ **Prevents session reuse** on shared computers
+- ✅ **Maintains proper session isolation** between users
+- ✅ **Cross-session memory still works** via Memory ID/Actor ID (from JWT)
+
+**What Happens on Logout**:
+
+| Data Type | Action | Reason |
+|-----------|--------|--------|
+| `auth_token` | ✅ Cleared | Prevents unauthorized access |
+| `access_token` | ✅ Cleared | Prevents API access |
+| `bedrock_session_id` | ✅ Cleared | Prevents session reuse |
+| `coveo_mcp_session_id` | ✅ Cleared | Prevents session reuse |
+| Memory ID/Actor ID | ❌ Not stored locally | Derived from JWT on next login |
+
+**What Happens on Next Login**:
+
+1. User authenticates with Cognito
+2. New JWT token issued with same `sub` claim
+3. New session IDs generated for fresh conversations
+4. Backend extracts Memory ID/Actor ID from JWT
+5. Agent retrieves previous conversations via Memory ID/Actor ID
+6. User can recall all previous sessions
 
 ### Data Protection
 
@@ -247,6 +635,7 @@ sequenceDiagram
 **Scenario**: Long-term financial planning
 
 **Benefits**:
+
 - Remember client goals and preferences
 - Track progress over time
 - Maintain context across multiple sessions
@@ -267,6 +656,7 @@ Session 4: Annual review and rebalancing
 **Scenario**: Complex technical support issues
 
 **Benefits**:
+
 - Remember previous issues and solutions
 - Track ongoing problems
 - Avoid repeating information
@@ -287,6 +677,7 @@ Session 4: Check-in after implementation
 **Scenario**: Progressive learning over time
 
 **Benefits**:
+
 - Track learning progress
 - Remember topics covered
 - Adapt difficulty level
@@ -307,6 +698,7 @@ Session 4: Portfolio construction
 **Scenario**: Ongoing task and preference management
 
 **Benefits**:
+
 - Remember user preferences
 - Track recurring tasks
 - Maintain context for projects
@@ -380,31 +772,35 @@ Session 4: Review progress and goals
 
 ### Test Procedure
 
-1. **Session 1: Establish Context**
-   ```
-   User: "I'm planning to retire in 15 years"
-   Agent: [Provides guidance]
-   User: "I prefer conservative investments"
-   Agent: [Adjusts recommendations]
-   ```
+**1. Session 1: Establish Context**
 
-2. **Logout**
-   ```
-   User logs out of the application
-   ```
+```
+User: "I'm planning to retire in 15 years"
+Agent: [Provides guidance]
+User: "I prefer conservative investments"
+Agent: [Adjusts recommendations]
+```
 
-3. **Session 2: Test Recall**
-   ```
-   User logs back in
-   User: "What did we discuss last time?"
-   Agent: [Should recall retirement planning and conservative preference]
-   ```
+**2. Logout**
 
-4. **Session 2: Continue Conversation**
-   ```
-   User: "What about tax implications?"
-   Agent: [Should maintain full context from Session 1]
-   ```
+```
+User logs out of the application
+```
+
+**3. Session 2: Test Recall**
+
+```
+User logs back in
+User: "What did we discuss last time?"
+Agent: [Should recall retirement planning and conservative preference]
+```
+
+**4. Session 2: Continue Conversation**
+
+```
+User: "What about tax implications?"
+Agent: [Should maintain full context from Session 1]
+```
 
 ### Validation Checklist
 
@@ -421,29 +817,29 @@ Session 4: Review progress and goals
 
 ### For Optimal Memory Usage
 
-1. **Clear Context Setting**:
+**1. Clear Context Setting**:
 
-   - Start conversations with clear context
-   - Provide relevant background information
-   - State preferences explicitly
+- Start conversations with clear context
+- Provide relevant background information
+- State preferences explicitly
 
-2. **Regular Check-ins**:
+**2. Regular Check-ins**:
 
-   - Periodically verify agent's understanding
-   - Ask for summaries to confirm memory
-   - Correct any misunderstandings promptly
+- Periodically verify agent's understanding
+- Ask for summaries to confirm memory
+- Correct any misunderstandings promptly
 
-3. **Progressive Disclosure**:
+**3. Progressive Disclosure**:
 
-   - Build context over multiple sessions
-   - Don't overwhelm with information
-   - Allow natural conversation flow
+- Build context over multiple sessions
+- Don't overwhelm with information
+- Allow natural conversation flow
 
-4. **Memory Hygiene**:
+**4. Memory Hygiene**:
 
-   - Update preferences when they change
-   - Clarify important decisions
-   - Confirm critical information
+- Update preferences when they change
+- Clarify important decisions
+- Confirm critical information
 
 ---
 
@@ -466,7 +862,7 @@ Session 4: Review progress and goals
 Explore real-world use cases for conversational AI:
 
 <div style="text-align: center; margin: 2rem 0;">
-  <a href="use-cases/" class="md-button md-button--primary">
+  <a href="../use-cases/" class="md-button md-button--primary">
     Explore Use Cases →
   </a>
 </div>

@@ -218,7 +218,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Clear authentication tokens
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('access_token');
+    
+    // Clear session IDs for security (prevent session reuse)
+    localStorage.removeItem('bedrock_session_id');
+    localStorage.removeItem('coveo_mcp_session_id');
+    
     setToken(null);
     setUser(null);
 
@@ -235,7 +242,7 @@ export const AuthProvider = ({ children }) => {
       logout_uri: REDIRECT_URI
     });
 
-    console.log('🔄 Logging out...');
+    console.log('🔄 Logging out and clearing all session data...');
     window.location.href = logoutUrl;
   };
 

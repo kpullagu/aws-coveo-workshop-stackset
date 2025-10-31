@@ -1,11 +1,8 @@
-# Lab 3: AgentCore + MCP Server
+<h1 style="color: #9c27b0; border-left: 6px solid #9c27b0; padding-left: 1rem; background: linear-gradient(90deg, rgba(156, 39, 176, 0.1) 0%, transparent 100%); padding: 1rem; border-radius: 4px;">⚡ Lab 3: AgentCore + MCP Server</h1>
 
+**Pattern**: AgentCore Runtime + MCP  
 **Duration**: 20 minutes  
 **Objective**: Explore AWS Bedrock AgentCore with Coveo Model Context Protocol (MCP) Server for advanced tool orchestration.
-
-<div style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%); color: white; border-radius: 8px; font-weight: 600; box-shadow: 0 2px 8px rgba(156, 39, 176, 0.3); border: 2px solid #9c27b0; display: inline-block; margin: 1.5rem 0;">
-  ⚡ AgentCore with Coveo MCP Server Agent
-</div>
 
 ## 🎯 Lab Goals
 

@@ -13,29 +13,31 @@ Master three integration patterns between Coveo and AWS Bedrock to build intelli
 ## 🏗️ What You Will Build
 
 <div class="lab-card">
-  <h3>🔍 Lab 1: Direct Integration with Coveo API (20 min)</h3>
-  <p>Direct Integration with Coveo API</p>
-  <span class="backend-badge coveo">Coveo Direct API</span>
+  <h3>🔍 Lab 1: Direct Integration with Coveo API</h3>
+  <p><strong>Pattern:</strong> Coveo Direct API</p>
+  <p>Learn to integrate Coveo Search, Passage Retrieval, and Answer APIs directly into your application for intelligent search experiences.</p>
+  <p style="color: #4caf50; font-weight: 600; margin-top: 0.5rem;">⏱️ Duration: 20 minutes</p>
 </div>
 
 <div class="lab-card">
-  <h3>🤖 Lab 2: Integrate Bedrock Agent with Coveo Passage Retrieval API Tool (20 min)</h3>
-  <p>Integrate Bedrock Agent with Coveo Passage Retrieval API Tool</p>
-  <span class="backend-badge bedrock">Bedrock Agent</span>
+  <h3>🤖 Lab 2: Bedrock Agent with Coveo Tool</h3>
+  <p><strong>Pattern:</strong> Bedrock Agent</p>
+  <p>Configure AWS Bedrock Agent to use Coveo Passage Retrieval as a tool for grounded conversational AI responses.</p>
+  <p style="color: #ff9800; font-weight: 600; margin-top: 0.5rem;">⏱️ Duration: 20 minutes</p>
 </div>
 
 <div class="lab-card">
-  <h3>⚡ Lab 3: Integrate Bedrock AgentCore with Coveo MCP Server (20 min)</h3>
-  <p>Integrate Bedrock AgentCore with Coveo MCP Server</p>
-  <span class="backend-badge agentcore">AgentCore with Coveo MCP Server Agent</span>
+  <h3>⚡ Lab 3: AgentCore with Coveo MCP Server</h3>
+  <p><strong>Pattern:</strong> AgentCore Runtime + MCP</p>
+  <p>Deploy AWS Bedrock AgentCore with Model Context Protocol (MCP) for advanced agent orchestration with Coveo tools.</p>
+  <p style="color: #9c27b0; font-weight: 600; margin-top: 0.5rem;">⏱️ Duration: 20 minutes</p>
 </div>
 
 <div class="lab-card">
-  <h3>💬 Lab 4: Test Multi-Turn Conversations with Agents (20 min)</h3>
-  <p>Test Multi-Turn Conversations with Agents</p>
-  <span class="backend-badge coveo">Coveo Direct API</span>
-  <span class="backend-badge bedrock">Bedrock Agent</span>
-  <span class="backend-badge agentcore">AgentCore with Coveo MCP Server Agent</span>
+  <h3>💬 Lab 4: Multi-Turn Conversations & Memory</h3>
+  <p><strong>Patterns:</strong> All Three Backends</p>
+  <p>Test conversational AI with session memory and cross-session recall using the chatbot interface across all integration patterns.</p>
+  <p style="color: #667eea; font-weight: 600; margin-top: 0.5rem;">⏱️ Duration: 20 minutes</p>
 </div>
 
 ## ✅ Prerequisites
