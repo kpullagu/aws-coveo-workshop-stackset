@@ -102,10 +102,14 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     # Convert space-separated accounts to array for proper AWS CLI handling
     ACCOUNT_ARRAY=($OUTDATED_ACCOUNTS)
     
+    log_info "Updating ${#ACCOUNT_ARRAY[@]} accounts with MaxConcurrentCount=${MAX_CONCURRENT_ACCOUNTS}"
+    
     UPDATE_OP_ID=$(aws cloudformation update-stack-instances \
         --stack-set-name workshop-layer1-prerequisites \
         --accounts "${ACCOUNT_ARRAY[@]}" \
         --regions $AWS_REGION \
+        --operation-preferences \
+            FailureToleranceCount=${FAILURE_TOLERANCE_COUNT},MaxConcurrentCount=${MAX_CONCURRENT_ACCOUNTS} \
         --region "$AWS_REGION" \
         --query 'OperationId' \
         --output text 2>/dev/null || echo "")

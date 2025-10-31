@@ -316,18 +316,53 @@ fix_outdated_instances() {
     log_warning "Found OUTDATED accounts: $OUTDATED_ACCOUNTS"
     log_info "Updating OUTDATED instances..."
     
+    # Check if there's already an operation in progress
+    local EXISTING_OP=$(aws cloudformation list-stack-set-operations \
+        --stack-set-name "$STACKSET_NAME" \
+        --region "$AWS_REGION" \
+        --query 'Summaries[?Status==`RUNNING`].OperationId' \
+        --output text 2>/dev/null || echo "")
+    
+    if [ -n "$EXISTING_OP" ]; then
+        log_info "Found existing operation in progress: $EXISTING_OP"
+        log_info "Waiting for existing operation to complete..."
+        
+        # Wait for existing operation
+        aws cloudformation wait stack-set-operation-complete \
+            --stack-set-name "$STACKSET_NAME" \
+            --operation-id "$EXISTING_OP" \
+            --region "$AWS_REGION" 2>/dev/null || true
+        
+        log_success "Existing operation completed"
+        sleep 5
+    fi
+    
     # Convert space-separated accounts to array for batch update
     local ACCOUNT_ARRAY=($OUTDATED_ACCOUNTS)
     
     log_info "Updating ${#ACCOUNT_ARRAY[@]} accounts in batch..."
+    log_info "Using MaxConcurrentCount=${MAX_CONCURRENT_ACCOUNTS}, FailureToleranceCount=${FAILURE_TOLERANCE_COUNT}"
     
-    local OPERATION_ID=$(aws cloudformation update-stack-instances \
+    # Capture both stdout and stderr for better error reporting
+    local UPDATE_OUTPUT=$(aws cloudformation update-stack-instances \
         --stack-set-name "$STACKSET_NAME" \
         --accounts "${ACCOUNT_ARRAY[@]}" \
         --regions $AWS_REGION \
+        --operation-preferences \
+            FailureToleranceCount=${FAILURE_TOLERANCE_COUNT},MaxConcurrentCount=${MAX_CONCURRENT_ACCOUNTS} \
         --region "$AWS_REGION" \
         --query 'OperationId' \
-        --output text 2>/dev/null || echo "")
+        --output text 2>&1)
+    
+    local UPDATE_EXIT_CODE=$?
+    
+    if [ $UPDATE_EXIT_CODE -ne 0 ]; then
+        log_error "Failed to start update operation. Error:"
+        log_error "$UPDATE_OUTPUT"
+        return 1
+    fi
+    
+    local OPERATION_ID="$UPDATE_OUTPUT"
     
     if [ -n "$OPERATION_ID" ]; then
         log_info "Update operation started: $OPERATION_ID"
