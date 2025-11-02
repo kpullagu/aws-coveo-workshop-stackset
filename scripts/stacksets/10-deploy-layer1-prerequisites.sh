@@ -116,15 +116,41 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     
     if [ -n "$UPDATE_OP_ID" ]; then
         log_info "Update operation started: $UPDATE_OP_ID"
-        log_info "Waiting for update to complete..."
+        log_info "Waiting for update to complete (this may take 5-10 minutes)..."
         
-        aws cloudformation wait stack-set-operation-complete \
-            --stack-set-name workshop-layer1-prerequisites \
-            --operation-id "$UPDATE_OP_ID" \
-            --region "$AWS_REGION" 2>/dev/null || true
+        # Manual polling loop with better visibility
+        local WAIT_COUNT=0
+        local MAX_WAIT=60  # 30 minutes (60 * 30 seconds)
         
-        log_success "Update operation completed"
+        while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+            local OP_STATUS=$(aws cloudformation describe-stack-set-operation \
+                --stack-set-name workshop-layer1-prerequisites \
+                --operation-id "$UPDATE_OP_ID" \
+                --region "$AWS_REGION" \
+                --query 'StackSetOperation.Status' \
+                --output text 2>/dev/null || echo "UNKNOWN")
+            
+            if [ "$OP_STATUS" = "SUCCEEDED" ]; then
+                log_success "✓ Update operation completed successfully"
+                break
+            elif [ "$OP_STATUS" = "FAILED" ] || [ "$OP_STATUS" = "STOPPED" ]; then
+                log_error "✗ Update operation failed with status: $OP_STATUS"
+                break
+            else
+                log_info "  Status: $OP_STATUS (waited $((WAIT_COUNT * 30))s)"
+                sleep 30
+                ((WAIT_COUNT++))
+            fi
+        done
+        
+        if [ $WAIT_COUNT -eq $MAX_WAIT ]; then
+            log_warning "⚠️  Update operation timeout after $((MAX_WAIT * 30))s"
+            log_warning "Operation may still be running in background"
+        fi
+        
         sleep 10
+    else
+        log_error "✗ Failed to start update operation"
     fi
     
     ((RETRY_COUNT++))

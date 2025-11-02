@@ -214,7 +214,7 @@ By testing these queries, you should understand:
 Once you've tested several queries and explored the features:
 
 <div style="text-align: center; margin: 3rem 0;">
-  <a href="../lab2/" class="md-button md-button--primary" style="font-size: 1.1rem; padding: 1rem 2rem;">
+  <a href="../../lab2/" class="md-button md-button--primary" style="font-size: 1.1rem; padding: 1rem 2rem;">
     Proceed to Lab 2: Bedrock Agent Integration →
   </a>
 </div>

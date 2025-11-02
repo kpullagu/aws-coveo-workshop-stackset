@@ -91,7 +91,7 @@ sequenceDiagram
 ```
 
 !!! info "Bedrock Agent is not yet enabled with memory"
-    In this Lab you will learn how to ground your Bedrock Model reponse with Passages retrieved from Coveo Index using it as a tool. Further we dont pass any session id from the UI so it is intentionally designed to be single-turn conversation. You will enable Memory as part of this lab and will test that feature in Lab 4. 
+    In this Lab you will learn how to ground your Bedrock Model reponse with Passages retrieved from Coveo Index using it as a tool. Further we dont pass any session id from the UI so it is intentionally designed to be single-turn conversation. You will enable Memory as part of this lab and will test that feature in Lab 4 as part of multi turn conversations in a chatbot. 
 
 
 ## 📋 Lab Exercises
@@ -370,7 +370,7 @@ how to prevent fraud and identity theft
 
 ---
 
-### Exercise 2.5: Enable Memory Configuration (10 minutes)
+### Exercise 2.5: Enable Memory Configuration (5 minutes)
 
 **Type**: Hands-on
 

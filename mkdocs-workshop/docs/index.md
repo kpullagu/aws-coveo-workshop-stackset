@@ -137,7 +137,7 @@ graph TD
 - **Search UI**: Interactive interface for testing all integration patterns
 - **API Gateway + Cognito**: Secure API access with JWT authentication
 - **Lambda Functions**: Serverless proxies for each backend mode
-- **Bedrock Agent**: AI orchestration with Coveo tool integration
+- **Bedrock Agent**: AI orchestration with Coveo passage API tool integration
 - **AgentCore Runtime**: Advanced agent platform with MCP protocol
 - **Coveo Platform**: Enterprise search with AI-powered relevance
 
