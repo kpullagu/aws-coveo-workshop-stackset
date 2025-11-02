@@ -49,7 +49,7 @@ graph TB
     style Coveo fill:#e8f5e8
 ```
 
-## Lab 2: Bedrock Agent
+## Lab 2: Bedrock Agent + Coveo 
 
 ### Agent Architecture
 
@@ -57,7 +57,7 @@ graph TB
 graph TB
     UI[Search UI] --> Lambda[Agent Chat Lambda]
     Lambda --> Agent[Bedrock Agent]
-    Agent --> Tool[Passage Tool Lambda]
+    Agent --> Tool[Coveo Passage Tool Lambda]
     Tool --> Coveo[Coveo APIs]
     Agent --> Memory[Agent Memory]
     
@@ -65,7 +65,7 @@ graph TB
     style Memory fill:#f3e5f5
 ```
 
-## Lab 3: AgentCore with MCP
+## Lab 3: AgentCore with Coveo MCP
 
 ### AgentCore Architecture
 

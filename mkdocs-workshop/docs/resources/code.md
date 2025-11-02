@@ -5,6 +5,7 @@ This page provides an overview of the workshop code repositories and their struc
 ## Workshop Repositories
 
 ### 1. StackSet Deployment Repository
+
 **Repository**: [aws-coveo-workshop-stackset](https://github.com/kpullagu/aws-coveo-workshop-stackset)
 
 This is the main repository for deploying the complete workshop infrastructure using AWS CloudFormation StackSets.
@@ -105,6 +106,7 @@ aws-coveo-workshop/
 ```
 
 ### 2. Content Indexing Repository
+
 **Repository**: [aws-coveo-workshop-index](https://github.com/kpullagu/aws-coveo-workshop-index)
 
 Code to index content from public websites into Coveo platform. This repository contains web scrapers and indexers for various financial and government sources.
@@ -138,6 +140,7 @@ aws-coveo-workshop-index/
 ```
 
 **Key Features**:
+
 - Web scraping from 11+ authoritative sources
 - Batch push to Coveo using Push API
 - Custom field creation and management
@@ -145,6 +148,7 @@ aws-coveo-workshop-index/
 - Configurable via environment variables
 
 ### 3. Platform Snapshot Repository
+
 **Repository**: [aws-coveo-workshop-platform-snapshot](https://github.com/kpullagu/aws-coveo-workshop-platform-snapshot)
 
 Coveo Platform snapshot that can be replicated into a new Coveo organization. This snapshot contains the complete platform configuration including sources, query pipelines, ML models, fields, and security settings.
@@ -156,7 +160,9 @@ aws-coveo-workshop-platform-snapshot/
 ```
 
 **Snapshot Contents**:
+
 The JSON snapshot file includes:
+
 - **Sources**: 11 configured sources (CFPB, FDIC, FRB, IRS, etc.)
 - **Query Pipelines**: Search logic and ranking rules
 - **ML Models**: Machine learning configurations for relevance
@@ -166,6 +172,7 @@ The JSON snapshot file includes:
 - **Search Interfaces**: UI configurations
 
 **Usage**:
+
 This snapshot can be imported into a new Coveo organization to replicate the entire workshop environment, including all sources, configurations, and settings used in the labs.
 
 ## Key Components
@@ -175,31 +182,37 @@ This snapshot can be imported into a new Coveo organization to replicate the ent
 The workshop uses several Lambda functions to integrate with Coveo APIs:
 
 #### Search Proxy (`lambdas/search_proxy/`)
+
 - Proxies search requests to Coveo Search API
 - Handles query parameters and facet configuration
 - Returns formatted search results
 
 #### Passages Proxy (`lambdas/passages_proxy/`)
+
 - Retrieves relevant passages from Coveo
 - Implements semantic search
 - Provides passage ranking and source attribution
 
 #### Answering Proxy (`lambdas/answering_proxy/`)
+
 - Generates AI answers using Coveo Answer API
 - Manages question understanding and answer generation
 - Includes citation management
 
 #### Bedrock Agent Chat (`lambdas/bedrock_agent_chat/`)
+
 - Handles Bedrock Agent invocations
 - Manages session state and memory
 - Processes agent responses
 
 #### Coveo Passage Tool (`lambdas/coveo_passage_tool_py/`)
+
 - Bedrock Agent tool for passage retrieval
 - Integrates with Coveo Passages API
 - Formats results for agent consumption
 
 #### AgentCore Runtime (`lambdas/agentcore_runtime_py/`)
+
 - Handles AgentCore runtime invocations
 - Manages MCP server communication
 - Processes multi-tool orchestration
@@ -207,6 +220,7 @@ The workshop uses several Lambda functions to integrate with Coveo APIs:
 ### Frontend Application
 
 The React-based UI (`frontend/`) provides:
+
 - Backend mode selection (Coveo, Bedrock Agent, AgentCore MCP)
 - Search interface with facets
 - Chat interface for conversational AI
@@ -216,6 +230,7 @@ The React-based UI (`frontend/`) provides:
 ### MCP Server
 
 The Coveo MCP Server (`coveo-mcp-server/`) implements:
+
 - **search_coveo**: Search tool for Coveo index
 - **passage_retrieval**: Passage retrieval tool
 - **answer_question**: Answer generation tool
@@ -225,6 +240,7 @@ The Coveo MCP Server (`coveo-mcp-server/`) implements:
 ### Deployment Scripts
 
 Key deployment scripts in `scripts/`:
+
 - `deploy-complete-workshop.sh`: Full workshop deployment
 - `deploy-main-infra.sh`: Core infrastructure only
 - `deploy-agent.sh`: Bedrock Agent deployment
@@ -242,6 +258,7 @@ Key deployment scripts in `scripts/`:
 Proxies search requests to Coveo Search API.
 
 **Key Features**:
+
 - Query parameter handling
 - Facet configuration
 - Result formatting
@@ -252,6 +269,7 @@ Proxies search requests to Coveo Search API.
 Retrieves relevant passages from Coveo.
 
 **Key Features**:
+
 - Semantic search
 - Passage ranking
 - Source attribution
@@ -262,6 +280,7 @@ Retrieves relevant passages from Coveo.
 Generates AI answers using Coveo Answer API.
 
 **Key Features**:
+
 - Question understanding
 - Answer generation
 - Citation management
@@ -272,6 +291,7 @@ Generates AI answers using Coveo Answer API.
 Handles Bedrock Agent invocations.
 
 **Key Features**:
+
 - Session management
 - Agent invocation
 - Response streaming
@@ -282,6 +302,7 @@ Handles Bedrock Agent invocations.
 Bedrock Agent tool for passage retrieval.
 
 **Key Features**:
+
 - Tool schema definition
 - Coveo API integration
 - Result formatting
@@ -294,6 +315,7 @@ Bedrock Agent tool for passage retrieval.
 Implements Model Context Protocol server.
 
 **Key Features**:
+
 - Tool registration
 - Request handling
 - Response formatting
@@ -302,6 +324,7 @@ Implements Model Context Protocol server.
 #### MCP Tools (`mcp-server/src/tools/`)
 
 Individual tool implementations:
+
 - `search_coveo.ts` - Search tool
 - `passage_retrieval.ts` - Passages tool
 - `answer_question.ts` - Answer tool
@@ -313,6 +336,7 @@ Individual tool implementations:
 Main search UI component.
 
 **Key Features**:
+
 - Backend selection
 - Query input
 - Results display
@@ -323,6 +347,7 @@ Main search UI component.
 Chatbot UI component.
 
 **Key Features**:
+
 - Message history
 - Backend switching
 - Session management
@@ -333,24 +358,28 @@ Chatbot UI component.
 #### CloudFormation Templates
 
 **app-runner.yaml**:
+
 - App Runner service
 - Container configuration
 - Environment variables
 - IAM roles
 
 **api-gateway.yaml**:
+
 - HTTP API
 - Route configuration
 - Lambda integrations
 - CORS settings
 
 **bedrock-agent.yaml**:
+
 - Agent definition
 - Tool configuration
 - Memory settings
 - IAM permissions
 
 **agentcore.yaml**:
+
 - Runtime deployment
 - MCP server container
 - Memory configuration
@@ -471,18 +500,19 @@ aws bedrock-agent-runtime invoke-agent \
 ### Documentation Resources
 
 #### Coveo Documentation
+
 - [Coveo Platform Overview](https://docs.coveo.com/)
 - [Coveo Search API Reference](https://docs.coveo.com/en/13/api-reference/search-api)
 - [Coveo Passages API](https://docs.coveo.com/en/3448/)
 - [Coveo Answer API](https://docs.coveo.com/en/3448/)
 
-
 #### AWS Documentation
+
 - [AWS Bedrock Agent Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html)
 - [AWS Bedrock AgentCore Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore.html)
 
-
 #### Protocol Specifications
+
 - [Model Context Protocol (MCP) Specification](https://modelcontextprotocol.io/)
 
 ---
