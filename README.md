@@ -7,7 +7,7 @@
 
 A production-ready, multi-account AWS workshop demonstrating AI-powered search and answering using Coveo's platform integrated with AWS Bedrock AgentCore Runtime, deployed via AWS CloudFormation StackSets across multiple accounts in an AWS Organization.
 
-Note: This setup will only work for Multi-Account AWS deployment in an Master Org with Child Accounts. If you need to deploy this stackset to your individual AWS account, you will have to make changes to the scripts.  
+## Note: This setup will only work for Multi-Account AWS deployment (Master Org with Child Accounts). If you need to deploy this stackset to your individual AWS account, you will have to make changes to the scripts.  
 ---
 
 ## 📋 Table of Contents
