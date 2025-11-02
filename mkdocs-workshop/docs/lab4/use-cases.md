@@ -199,11 +199,11 @@ Turn 3: "What about tax implications?"
 | Use Case | Backend | Memory | Tools | Response Time | Best For |
 |----------|---------|--------|-------|---------------|----------|
 | **FAQ Bot** | Coveo | None | N/A | ~200ms | High volume, simple queries |
-| **Support Chat** | Bedrock Agent | Cross-session | 1 | ~2-3s | Support conversations |
-| **Advisory** | AgentCore MCP | Cross-session | 3+ | ~3-5s | Consultations, relationships |
+| **Support Chat** | Bedrock Agent + Coveo | Cross-session | 1 | ~2-3s | Support conversations |
+| **Advisory** | AgentCore + Coveo MCP | Cross-session | 3+ | ~3-5s | Consultations, relationships |
 | **Knowledge Portal** | Coveo | None | N/A | ~200ms | Search and discovery |
-| **Troubleshooting** | Bedrock Agent | Cross-session | 1 | ~2-3s | Guided problem solving |
-| **Research Assistant** | AgentCore MCP | Cross-session | 3+ | ~3-5s | Complex research |
+| **Troubleshooting** | Bedrock Agent + Coveo | Cross-session | 1 | ~2-3s | Guided problem solving |
+| **Research Assistant** | AgentCore + Coveo MCP | Cross-session | 3+ | ~3-5s | Complex research |
 
 ---
 
@@ -213,14 +213,14 @@ Turn 3: "What about tax implications?"
 
 <div class="lab-card">
   <h4>🏦 Retail Banking</h4>
-  <p><strong>Backend</strong>: Bedrock Agent</p>
+  <p><strong>Backend</strong>: Bedrock Agent + Coveo</p>
   <p><strong>Use Case</strong>: Account support, transaction inquiries, product information</p>
   <p><strong>Why</strong>: Multi-turn conversations with cross-session memory for ongoing support</p>
 </div>
 
 <div class="lab-card">
   <h4>💼 Wealth Management</h4>
-  <p><strong>Backend</strong>: AgentCore + MCP</p>
+  <p><strong>Backend</strong>: AgentCore + Coveo MCP</p>
   <p><strong>Use Case</strong>: Investment advisory, portfolio management, financial planning</p>
   <p><strong>Why</strong>: Cross-session memory for long-term client relationships</p>
 </div>
@@ -245,7 +245,7 @@ Turn 3: "What about tax implications?"
 
 <div class="lab-card">
   <h4>💊 Symptom Checker</h4>
-  <p><strong>Backend</strong>: Bedrock Agent</p>
+  <p><strong>Backend</strong>: Bedrock Agent + Coveo</p>
   <p><strong>Use Case</strong>: Interactive symptom assessment with follow-up questions</p>
   <p><strong>Why</strong>: Multi-turn conversation for comprehensive assessment</p>
 </div>
@@ -263,14 +263,14 @@ Turn 3: "What about tax implications?"
 
 <div class="lab-card">
   <h4>🤝 Shopping Assistant</h4>
-  <p><strong>Backend</strong>: Bedrock Agent</p>
+  <p><strong>Backend</strong>: Bedrock Agent + Coveo</p>
   <p><strong>Use Case</strong>: Guided shopping, product comparisons, recommendations</p>
   <p><strong>Why</strong>: Conversational product discovery with context</p>
 </div>
 
 <div class="lab-card">
   <h4>👤 Personal Shopper</h4>
-  <p><strong>Backend</strong>: AgentCore + MCP</p>
+  <p><strong>Backend</strong>: AgentCore + Coveo MCP</p>
   <p><strong>Use Case</strong>: Long-term style preferences, seasonal recommendations</p>
   <p><strong>Why</strong>: Cross-session memory for personalized experience</p>
 </div>
@@ -284,16 +284,16 @@ Turn 3: "What about tax implications?"
 | Backend | Latency | Throughput | Scalability |
 |---------|---------|------------|-------------|
 | **Coveo** | Lowest | Highest | Excellent |
-| **Bedrock Agent** | Medium | High | Very Good |
-| **AgentCore MCP** | Higher | Medium | Good |
+| **Bedrock Agent + Coveo** | Medium | High | Very Good |
+| **AgentCore + Coveo MCP** | Higher | Medium | Good |
 
 ### Complexity Considerations
 
 | Backend | Setup | Maintenance | Extensibility |
 |---------|-------|-------------|---------------|
 | **Coveo** | Simple | Easy | Limited |
-| **Bedrock Agent** | Moderate | Moderate | Good |
-| **AgentCore MCP** | Complex | Moderate | Excellent |
+| **Bedrock Agent + Coveo** | Moderate | Moderate | Good |
+| **AgentCore + Coveo MCP** | Complex | Moderate | Excellent |
 
 ---
 
@@ -313,8 +313,8 @@ Ask yourself:
 Use the decision framework:
 
 - **Simple FAQ** → Coveo Direct
-- **Support Chat** → Bedrock Agent
-- **Consultation** → AgentCore + MCP
+- **Support Chat** → Bedrock Agent + Coveo
+- **Consultation** → AgentCore + Coveo MCP
 
 ### Step 3: Prototype
 
@@ -345,7 +345,7 @@ Based on testing:
 
 ### Implementation Timeline
 
-| Phase | Coveo Direct API | Coveo with Bedrock Agent | Bedrock AgentCore with Coveo MCP |
+| Phase | Coveo Direct API | Bedrock Agent with Coveo | Bedrock AgentCore with Coveo MCP |
 |-------|------------------|--------------------------|----------------------------------|
 | **Setup** | 1 week | 2 weeks | 3 weeks |
 | **Maintenance** | Low | Medium | Medium |
@@ -361,14 +361,14 @@ Based on testing:
 3. **Clear Sources**: Always show authoritative citations
 4. **Fallback**: Provide escalation path to human support
 
-### For Support Chat (Bedrock Agent)
+### For Support Chat (Bedrock Agent + Coveo)
 
 1. **Clear Instructions**: Well-defined system prompts
 2. **Memory Management**: Appropriate session timeouts
 3. **Tool Design**: Single, focused tool for grounding
 4. **Escalation**: Know when to transfer to human
 
-### For Advisory (AgentCore + MCP)
+### For Advisory (AgentCore + Coveo MCP)
 
 1. **Multiple Tools**: Provide diverse capabilities
 2. **Cross-Session Memory**: Enable long-term relationships

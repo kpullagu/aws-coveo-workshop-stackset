@@ -205,7 +205,7 @@ The **Agent Runtime** acts as the "brain" making decisions, while the **MCP Serv
 
 ---
 
-### Exercise 3.2: Explore AgentCore Console (10 minutes)
+### Exercise 3.2: Explore AgentCore Console (5 minutes)
 
 **Type**: Hands-on
 
