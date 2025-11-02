@@ -7,6 +7,7 @@
 
 A production-ready, multi-account AWS workshop demonstrating AI-powered search and answering using Coveo's platform integrated with AWS Bedrock AgentCore Runtime, deployed via AWS CloudFormation StackSets across multiple accounts in an AWS Organization.
 
+## Note: This setup will only work for Multi-Account AWS deployment (Master Org with Child Accounts). If you need to deploy this stackset to your individual AWS account, you will have to make changes to the scripts.  
 ---
 
 ## 📋 Table of Contents
@@ -652,10 +653,10 @@ The cleanup script removes resources in reverse order of deployment:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Step 1: Delete StackSet Instances (Layer 4 → Layer 1)      │
+│ Step 1: Delete StackSet Instances (Layer 4 → Layer 1)       │
 │  • Removes stacks from all child accounts                   │
 │  • Waits for complete deletion                              │
-│  • Handles dependencies automatically                        │
+│  • Handles dependencies automatically                       │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -775,7 +776,6 @@ aws ecr batch-delete-image \
 ## 📞 Support
 
 For issues or questions:
-- Check the [Troubleshooting](#-troubleshooting) section
 - Review [Workshop Documentation](https://kpullagu.github.io/aws-coveo-workshop-stackset/)
 - Open an issue on GitHub
 
@@ -787,4 +787,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for AWS and Coveo workshops**
+**Built with ❤️ for Coveo and AWS workshops**
