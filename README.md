@@ -787,4 +787,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ for Coveo and AWS workshops**
+**Built with ❤️ for AWS and Coveo workshops**
