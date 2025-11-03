@@ -50,9 +50,8 @@ Master three integration patterns between Coveo and AWS Bedrock to build intelli
 !!! info "Search UI Account Credentials"
     Your instructor will provide Search UI credentials and access instructions at the beginning of the workshop.
 
-- AWS Console access (region: `us-east-1`)
-- Workshop UI URL (App Runner)
-- Login credentials for authentication
+- AWS Console access (Verify Access to AWS. NOTE: Switch to `us-east-1` region)
+- Workshop UI Access (Verify Access to the search UI with the provided credentials)
 
 **Knowledge Base**: Pre-indexed financial content from 11 authoritative sources.
 
