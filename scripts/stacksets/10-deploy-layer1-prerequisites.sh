@@ -99,12 +99,55 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     log_warning "Found OUTDATED accounts: $OUTDATED_ACCOUNTS"
     log_info "Updating OUTDATED instances (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)..."
     
+    # Check if there's already an operation in progress
+    log_info "Checking for existing operations..."
+    EXISTING_OP=$(aws cloudformation list-stack-set-operations \
+        --stack-set-name workshop-layer1-prerequisites \
+        --region "$AWS_REGION" \
+        --query 'Summaries[?Status==`RUNNING`].OperationId' \
+        --output text 2>/dev/null || echo "")
+    
+    if [ -n "$EXISTING_OP" ]; then
+        log_info "Found existing operation in progress: $EXISTING_OP"
+        log_info "Waiting for existing operation to complete..."
+        
+        # Wait for existing operation
+        local WAIT_COUNT=0
+        local MAX_WAIT=60  # 30 minutes
+        
+        while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+            local OP_STATUS=$(aws cloudformation describe-stack-set-operation \
+                --stack-set-name workshop-layer1-prerequisites \
+                --operation-id "$EXISTING_OP" \
+                --region "$AWS_REGION" \
+                --query 'StackSetOperation.Status' \
+                --output text 2>/dev/null || echo "UNKNOWN")
+            
+            if [ "$OP_STATUS" = "SUCCEEDED" ]; then
+                log_success "✓ Existing operation completed successfully"
+                break
+            elif [ "$OP_STATUS" = "FAILED" ] || [ "$OP_STATUS" = "STOPPED" ]; then
+                log_warning "⚠️  Existing operation failed: $OP_STATUS"
+                break
+            fi
+            
+            log_info "  Waiting for existing operation... ($((WAIT_COUNT * 30))s elapsed, Status: $OP_STATUS)"
+            sleep 30
+            WAIT_COUNT=$((WAIT_COUNT + 1))
+        done
+        
+        # Wait a bit more for AWS to fully process the completion
+        log_info "Waiting 30 seconds for AWS to process operation completion..."
+        sleep 30
+    fi
+    
     # Convert space-separated accounts to array for proper AWS CLI handling
     ACCOUNT_ARRAY=($OUTDATED_ACCOUNTS)
     
     log_info "Updating ${#ACCOUNT_ARRAY[@]} accounts with MaxConcurrentCount=${MAX_CONCURRENT_ACCOUNTS}"
     
-    UPDATE_OP_ID=$(aws cloudformation update-stack-instances \
+    # Capture both stdout and stderr for better error reporting
+    UPDATE_OUTPUT=$(aws cloudformation update-stack-instances \
         --stack-set-name workshop-layer1-prerequisites \
         --accounts "${ACCOUNT_ARRAY[@]}" \
         --regions $AWS_REGION \
@@ -112,7 +155,30 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             FailureToleranceCount=${FAILURE_TOLERANCE_COUNT},MaxConcurrentCount=${MAX_CONCURRENT_ACCOUNTS} \
         --region "$AWS_REGION" \
         --query 'OperationId' \
-        --output text 2>/dev/null || echo "")
+        --output text 2>&1)
+    
+    UPDATE_EXIT_CODE=$?
+    
+    if [ $UPDATE_EXIT_CODE -ne 0 ]; then
+        log_error "Failed to start update operation. Error:"
+        log_error "$UPDATE_OUTPUT"
+        
+        # Check if it's a "operation already in progress" error
+        if echo "$UPDATE_OUTPUT" | grep -q "OperationInProgressException\|ConflictException"; then
+            log_warning "Another operation is in progress. Waiting 60 seconds and retrying..."
+            sleep 60
+            ((RETRY_COUNT++))
+            continue
+        fi
+        
+        # For other errors, increment retry and continue
+        log_warning "Retrying in 30 seconds..."
+        sleep 30
+        ((RETRY_COUNT++))
+        continue
+    fi
+    
+    UPDATE_OP_ID="$UPDATE_OUTPUT"
     
     if [ -n "$UPDATE_OP_ID" ]; then
         log_info "Update operation started: $UPDATE_OP_ID"
@@ -148,9 +214,13 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             log_warning "Operation may still be running in background"
         fi
         
+        # Wait for AWS to fully process before checking again
         sleep 10
-    else
-        log_error "✗ Failed to start update operation"
+        
+        # Break out of retry loop if operation succeeded
+        if [ "$OP_STATUS" = "SUCCEEDED" ]; then
+            break
+        fi
     fi
     
     ((RETRY_COUNT++))

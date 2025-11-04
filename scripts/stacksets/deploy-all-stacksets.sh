@@ -468,13 +468,14 @@ log_info "Pre-Deployment Validation"
 log_info "=========================================="
 
 # Check if this is a fresh deployment or re-deployment
+# Filter out DELETED StackSets (AWS keeps them for 90 days)
 EXISTING_STACKSETS=$(aws cloudformation list-stack-sets \
     --region "$AWS_REGION" \
-    --query "Summaries[?starts_with(StackSetName, 'workshop-')].StackSetName" \
+    --query "Summaries[?starts_with(StackSetName, 'workshop-') && Status=='ACTIVE'].StackSetName" \
     --output text 2>/dev/null || echo "")
 
 if [ -n "$EXISTING_STACKSETS" ]; then
-    log_warning "Existing StackSets found: $EXISTING_STACKSETS"
+    log_warning "Existing ACTIVE StackSets found: $EXISTING_STACKSETS"
     log_info "This appears to be a re-deployment or repair operation"
     
     # Check for any failed instances
@@ -492,7 +493,19 @@ if [ -n "$EXISTING_STACKSETS" ]; then
     done
     echo ""
 else
-    log_info "No existing StackSets found - this is a fresh deployment"
+    log_info "No existing ACTIVE StackSets found - this is a fresh deployment"
+    
+    # Check for DELETED StackSets (informational only)
+    DELETED_STACKSETS=$(aws cloudformation list-stack-sets \
+        --region "$AWS_REGION" \
+        --query "Summaries[?starts_with(StackSetName, 'workshop-') && Status=='DELETED'].StackSetName" \
+        --output text 2>/dev/null || echo "")
+    
+    if [ -n "$DELETED_STACKSETS" ]; then
+        DELETED_COUNT=$(echo "$DELETED_STACKSETS" | wc -w)
+        log_info "Note: Found $DELETED_COUNT DELETED StackSets in history (AWS keeps these for 90 days)"
+        log_info "These will not affect deployment and will be automatically cleaned up by AWS"
+    fi
 fi
 
 # Confirm deployment
