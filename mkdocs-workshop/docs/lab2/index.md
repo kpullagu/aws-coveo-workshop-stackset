@@ -293,7 +293,17 @@ What is FDIC insurance and how much does it cover?
 ```
 
 2. **Click "Run"** or press Enter
+
 3. **Wait for response** (takes 2-5 seconds)
+
+!!! info "Expected Console Behavior on First Run"
+    **First Run**: You may see `[<redacted>__(query="...",k=5)]` instead of the full answer. This shows the agent's tool call to retrieve passages.
+    
+    **Why**: The Bedrock Console displays intermediate steps (tool invocation) before showing the final answer.
+    
+    **Solution**: Simply **re-run the same query** - the second run will display the complete answer with citations.
+    
+    **Note**: The workshop UI handles this correctly and shows the complete answer on the first try. This console behavior is specific to the AWS Bedrock test interface.
 
 **Bedrock Console - Test Query Response**
 

@@ -325,10 +325,15 @@ The instructor will demonstrate how to view CloudWatch Logs for observability.
 
 #### Step 1: Navigate to CloudWatch
 
-1. **Open CloudWatch** in a new tab
-2. **Click "Logs"** → **"Log groups"**
-3. **Find log groups**: expand the log to look at the Agent runtime tool selection and reasoning and how it responded back 
-   - `/aws/bedrock/modelinvocations/StackSet-workshop-layer3-ai-services-<some random number>`
+**1. Open CloudWatch** in a new tab
+
+**2. Click "Logs"** → **"Log groups"**
+
+**3. Find log groups**: expand the log to look at the Agent runtime tool selection and reasoning and how it responded back
+
+- `/aws/bedrock/modelinvocations/StackSet-workshop-layer3-ai-services-<some random number>`
+
+**4. Select the log stream aws/bedrock/modelinvocations**: expand the latest log based on the timestamp to view the details of the model invocation
 
 **CloudWatch - Log Groups List**
 
@@ -337,15 +342,18 @@ The instructor will demonstrate how to view CloudWatch Logs for observability.
 
 #### Step 2: View Agent Runtime Logs
 
-1. **Go back to Log groups**
-2. **Click on** `/aws/bedrock-agentcore/runtimes/workshop_CoveoAgent-<randomnumber>-DEFAULT
-`
-3. **Click on the latest log stream**
-4. **Observe agent logs**:
-   - Model Used
-   - MCP Runtime ARN
-   - Memory usage by the Coveo Agent
-   - Unique memory_id
+**1. Go back to Log groups**
+
+**2. Click on** `/aws/bedrock-agentcore/runtimes/workshop_CoveoAgent-<randomnumber>-DEFAULT`
+
+**3. Click on the latest log stream**
+
+**4. Observe agent logs**:
+
+- Model Used
+- MCP Runtime ARN
+- Memory usage by the Coveo Agent
+- Unique memory_id
 
 **CloudWatch - Agent Runtime Logs**
 
