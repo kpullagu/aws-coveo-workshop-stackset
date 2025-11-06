@@ -112,11 +112,11 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         log_info "Waiting for existing operation to complete..."
         
         # Wait for existing operation
-        local WAIT_COUNT=0
-        local MAX_WAIT=60  # 30 minutes
+        WAIT_COUNT=0
+        MAX_WAIT=60  # 30 minutes
         
         while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-            local OP_STATUS=$(aws cloudformation describe-stack-set-operation \
+            OP_STATUS=$(aws cloudformation describe-stack-set-operation \
                 --stack-set-name workshop-layer1-prerequisites \
                 --operation-id "$EXISTING_OP" \
                 --region "$AWS_REGION" \
@@ -185,11 +185,11 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         log_info "Waiting for update to complete (this may take 5-10 minutes)..."
         
         # Manual polling loop with better visibility
-        local WAIT_COUNT=0
-        local MAX_WAIT=60  # 30 minutes (60 * 30 seconds)
+        WAIT_COUNT=0
+        MAX_WAIT=60  # 30 minutes (60 * 30 seconds)
         
         while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-            local OP_STATUS=$(aws cloudformation describe-stack-set-operation \
+            OP_STATUS=$(aws cloudformation describe-stack-set-operation \
                 --stack-set-name workshop-layer1-prerequisites \
                 --operation-id "$UPDATE_OP_ID" \
                 --region "$AWS_REGION" \
