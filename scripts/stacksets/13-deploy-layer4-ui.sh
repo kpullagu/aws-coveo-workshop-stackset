@@ -3,7 +3,7 @@
 # Deploy StackSet Layer 4: UI (App Runner)
 #
 
-set -e
+# Note: Not using 'set -e' to allow better error handling
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"

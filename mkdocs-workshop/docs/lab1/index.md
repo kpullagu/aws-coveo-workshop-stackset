@@ -274,7 +274,7 @@ Test the following queries one at a time, search and and observe the results
 
 **Query 2:**
 ```
-annual percentage rate and credit card margin
+annual percentage rate
 ```
 
 **Query 3:**

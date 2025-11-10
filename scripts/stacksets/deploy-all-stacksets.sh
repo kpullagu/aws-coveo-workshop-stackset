@@ -650,8 +650,8 @@ log_info "This layer creates AgentCore Runtimes and SSM parameters"
 bash scripts/stacksets/12-deploy-layer3-ai-services.sh
 
 # Wait for Layer 3 to be fully deployed before proceeding
-log_info "Waiting for Layer 3 to complete (this may take 10-15 minutes)..."
-wait_for_stackset_complete "workshop-layer3-ai-services" 30
+log_info "Waiting for Layer 3 to complete (AgentCore deployment may take 30-45 minutes for many accounts)..."
+wait_for_stackset_complete "workshop-layer3-ai-services" 90
 fix_outdated_instances "workshop-layer3-ai-services"
 
 # Give extra time for AgentCore resources to be fully ready

@@ -3,7 +3,8 @@
 # Deploy StackSet Layer 1: Prerequisites (S3, ECR)
 #
 
-set -e
+# Note: Not using 'set -e' because we handle errors manually
+# to provide better error messages and retry logic
 
 # Load configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -189,23 +190,51 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         MAX_WAIT=60  # 30 minutes (60 * 30 seconds)
         
         while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+            # Get operation status with error handling
             OP_STATUS=$(aws cloudformation describe-stack-set-operation \
                 --stack-set-name workshop-layer1-prerequisites \
                 --operation-id "$UPDATE_OP_ID" \
                 --region "$AWS_REGION" \
                 --query 'StackSetOperation.Status' \
-                --output text 2>/dev/null || echo "UNKNOWN")
+                --output text 2>&1)
             
+            OP_STATUS_EXIT=$?
+            
+            # Check if AWS CLI command failed
+            if [ $OP_STATUS_EXIT -ne 0 ]; then
+                log_warning "Failed to get operation status (attempt $WAIT_COUNT/$MAX_WAIT)"
+                log_warning "Error: $OP_STATUS"
+                sleep 30
+                WAIT_COUNT=$((WAIT_COUNT + 1))
+                continue
+            fi
+            
+            # Check status
             if [ "$OP_STATUS" = "SUCCEEDED" ]; then
                 log_success "✓ Update operation completed successfully"
                 break
             elif [ "$OP_STATUS" = "FAILED" ] || [ "$OP_STATUS" = "STOPPED" ]; then
                 log_error "✗ Update operation failed with status: $OP_STATUS"
+                
+                # Get failure details
+                FAILURE_REASON=$(aws cloudformation describe-stack-set-operation \
+                    --stack-set-name workshop-layer1-prerequisites \
+                    --operation-id "$UPDATE_OP_ID" \
+                    --region "$AWS_REGION" \
+                    --query 'StackSetOperation.StatusReason' \
+                    --output text 2>/dev/null || echo "Unknown")
+                
+                log_error "Reason: $FAILURE_REASON"
                 break
-            else
-                log_info "  Status: $OP_STATUS (waited $((WAIT_COUNT * 30))s)"
+            elif [ "$OP_STATUS" = "RUNNING" ] || [ "$OP_STATUS" = "QUEUED" ] || [ "$OP_STATUS" = "STOPPING" ]; then
+                ELAPSED_SECONDS=$((WAIT_COUNT * 30))
+                log_info "  Status: $OP_STATUS (waited ${ELAPSED_SECONDS}s / $((MAX_WAIT * 30))s max)"
                 sleep 30
-                ((WAIT_COUNT++))
+                WAIT_COUNT=$((WAIT_COUNT + 1))
+            else
+                log_warning "Unexpected status: $OP_STATUS (waited $((WAIT_COUNT * 30))s)"
+                sleep 30
+                WAIT_COUNT=$((WAIT_COUNT + 1))
             fi
         done
         

@@ -133,7 +133,11 @@ I found errors in my credit report, what’s first?
 ```
 What were we discussing earlier
 ```
-**Expected**: Previous context recollection (same session), but the chatbot doesn't recollect anything
+**Expected**: The chatbot doesn't recollect anything, since answer API is single turn
+
+**Chat interface with Coveo backend single turn**
+
+![Chat interface with Coveo backend single turn response ](../images/ChatPanel-coveo-singleturn.png)
 
 ---
 
@@ -199,13 +203,12 @@ Form a 60‑day SMART goal plan
 
 ---
 
-**Refresh browser now to start a new session**
+**Refresh browser now to start a new session. Ensure Bedrock Agent is selected**
 
 Notice the same session ID (compare with the one you noted earlier)
 
 !!! info "Session ID local storage"
     - The solution is designed to store the session ID in local storage, and so upon refresh of the browser, the existing session ID is maintained
-    - For cross-session memory (across logins), external memory with memory ID must be configured. You enabled external memory in Lab 2.
 
 
 **Turn 4: followup Question**
@@ -233,27 +236,11 @@ Any dispute follow-up timing guidance?
 
 ![Context recollection with Bedrock Agent](../images/ChatPanel-bedrockagent-4.png)
 
-
-**Now Log out of the UI application and log back in**. Select Bedrock Agent as backend and open the chatbot and test
-
-!!! info "Session ID changes now"
-    For cross-sessions, the session ID changes
-
-**Turn 6: followup Question**
-```
-What did we discuss in the past?
-```
-**Expected**: Previous context recollection with a summary of all prior conversations
-
-**Multi Turn Conversation across session with Bedrock Agent**
-
-![Multi Turn Conversation across session with Bedrock Agent](../images/ChatPanel-bedrockagent-5.png)
-
 ---
 
 **Observation**:
 
-- ✅ Remembers conversation context in a session and across sessions and across log-out and log-in
+- ✅ Remembers conversation context in a session and across sessions
 - ✅ Understands follow-up questions
 - ✅ Maintains topic continuity
 - ✅ Natural conversation flow
@@ -317,7 +304,7 @@ Sorry I went to grab coffee!, What did we discuss earlier?
 
 ---
 
-**Refresh browser now to start a new session**
+**Refresh browser now to start a new session. Ensure you switch to Coveo MCP server Agent**
 
 Notice the same session ID (compare with the one you noted earlier)
 
