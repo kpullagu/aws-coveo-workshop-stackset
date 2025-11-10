@@ -4,6 +4,9 @@
 **Duration**: 20 minutes  
 **Objective**: Integrate Coveo Passage Retrieval API with AWS Bedrock Agent for conversational AI with grounded responses.
 
+!!! note "Throughput Notice"
+    If Bedrock doesn't respond immediately, wait 30-60 seconds and retry. This is normal during peak workshop usage.
+
 ## 🎯 Lab Goals
 
 By the end of this lab, you will:

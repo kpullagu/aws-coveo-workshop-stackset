@@ -70,6 +70,9 @@ Master three integration patterns between Coveo and AWS Bedrock to build intelli
 
 All exercises are console-based - no command-line tools required.
 
+!!! warning "Important: Model Throughput Limits"
+    Due to the large number of workshop participants, the AWS Bedrock model throughput for this account may be temporarily exhausted. If you don't receive a response from the Bedrock model, please wait 30-60 seconds and retry your request. This is expected behavior during peak usage and does not indicate an error with your configuration.
+
 ## 🏗️ Deployed Infrastructure
 
 Your AWS account includes pre-deployed components:
