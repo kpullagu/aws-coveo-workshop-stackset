@@ -1,11 +1,11 @@
 site_name: Coveo + AWS Workshop
 site_description: Hands-on workshop demonstrating three progressive AI integration patterns with AWS and Coveo
 site_author: Coveo
-site_url: https://kpullagu.github.io/aws-coveo-workshop-stackset/
+site_url: https://coveo-labs.github.io/aws-coveo-workshop-stackset/
 
 # Repository
 repo_name: aws-coveo-workshop-stackset
-repo_url: https://github.com/kpullagu/aws-coveo-workshop-stackset
+repo_url: https://github.com/coveo-labs/aws-coveo-workshop-stackset
 
 # Theme configuration
 theme:
@@ -107,7 +107,7 @@ extra_javascript:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/kpullagu/aws-coveo-workshop-stackset
+      link: https://github.com/coveo-labs/aws-coveo-workshop-stackset
     - icon: fontawesome/solid/globe
       link: https://www.coveo.com
 
