@@ -6,7 +6,7 @@ This page provides an overview of the workshop code repositories and their struc
 
 ### 1. StackSet Deployment Repository
 
-**Repository**: [aws-coveo-workshop-stackset](https://github.com/kpullagu/aws-coveo-workshop-stackset)
+**Repository**: [aws-coveo-workshop-stackset](https://github.com//aws-coveo-workshop-stackset)
 
 This is the main repository for deploying the complete workshop infrastructure using AWS CloudFormation StackSets.
 
@@ -107,7 +107,7 @@ aws-coveo-workshop/
 
 ### 2. Content Indexing Repository
 
-**Repository**: [aws-coveo-workshop-index](https://github.com/kpullagu/aws-coveo-workshop-index)
+**Repository**: [aws-coveo-workshop-index](https://github.com//aws-coveo-workshop-index)
 
 Code to index content from public websites into Coveo platform. This repository contains web scrapers and indexers for various financial and government sources.
 
@@ -149,7 +149,7 @@ aws-coveo-workshop-index/
 
 ### 3. Platform Snapshot Repository
 
-**Repository**: [aws-coveo-workshop-platform-snapshot](https://github.com/kpullagu/aws-coveo-workshop-platform-snapshot)
+**Repository**: [aws-coveo-workshop-platform-snapshot](https://github.com//aws-coveo-workshop-platform-snapshot)
 
 Coveo Platform snapshot that can be replicated into a new Coveo organization. This snapshot contains the complete platform configuration including sources, query pipelines, ML models, fields, and security settings.
 
@@ -493,9 +493,9 @@ aws bedrock-agent-runtime invoke-agent \
 ## Workshop GitHub Repositories
 
 ### Infrastructure & Deployment
-- [StackSet Deployment Code](https://github.com/kpullagu/aws-coveo-workshop-stackset) - Complete infrastructure deployment using CloudFormation StackSets
-- [Content Indexing Code](https://github.com/kpullagu/aws-coveo-workshop-index) - Scripts to index content from public websites into Coveo
-- [Platform Snapshot](https://github.com/kpullagu/aws-coveo-workshop-platform-snapshot) - Coveo Platform configuration snapshot for replication
+- [StackSet Deployment Code](https://github.com//aws-coveo-workshop-stackset) - Complete infrastructure deployment using CloudFormation StackSets
+- [Content Indexing Code](https://github.com//aws-coveo-workshop-index) - Scripts to index content from public websites into Coveo
+- [Platform Snapshot](https://github.com//aws-coveo-workshop-platform-snapshot) - Coveo Platform configuration snapshot for replication
 
 ### Documentation Resources
 
