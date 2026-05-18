@@ -125,7 +125,7 @@ sequenceDiagram
     participant COVEO as Coveo Answer API
     
     User->>UI: Enter question
-    UI->>AG: POST /answer
+    UI->>AG: POST /api/answer
     AG->>AP: Invoke Lambda
     AP->>AP: Build answer request
     AP->>COVEO: Answer API call
@@ -159,7 +159,7 @@ sequenceDiagram
     participant COVEO as Coveo Passages API
     
     User->>UI: Enter query
-    UI->>AG: POST /passages
+    UI->>AG: POST /api/passages
     AG->>PP: Invoke Lambda
     PP->>PP: Build passages request
     PP->>COVEO: Passages API call
@@ -193,7 +193,7 @@ sequenceDiagram
     
     User->>UI: Enter search query
     UI->>UI: Validate input
-    UI->>AG: POST /search
+    UI->>AG: POST /api/search
     AG->>AG: Authenticate JWT token
     AG->>SP: Invoke Lambda
     SP->>SP: Build Coveo request
@@ -277,9 +277,11 @@ Each Lambda function uses these environment variables:
 | Variable | Purpose | Example Value |
 |----------|---------|---------------|
 | `COVEO_ORG_ID` | Coveo organization identifier | `workshoporg123` |
-| `COVEO_API_KEY` | API authentication token | `xx-xxxxxxxx-xxxx-xxxx` |
-| `COVEO_SEARCH_HUB` | Analytics tracking identifier | `workshop` |
-| `COVEO_PIPELINE` | Query processing pipeline | `default` |
+| `COVEO_SEARCH_API_KEY` | API authentication token | `xx-xxxxxxxx-xxxx-xxxx` |
+| `COVEO_PLATFORM_URL` | Coveo Platform base URL | `https://platform.cloud.coveo.com` |
+| `COVEO_SEARCH_HUB` | Analytics tracking identifier | `aws-workshop` |
+| `COVEO_SEARCH_PIPELINE` | Query processing pipeline | `aws-workshop-pipeline` |
+| `COVEO_ANSWER_CONFIG_ID` | Answer API configuration ID | `xxxx-xxxx-xxxx` |
 
 ### Error Handling
 
@@ -333,7 +335,7 @@ except Exception as e:
 - **API Gateway**: Handles thousands of requests per second
 - **Coveo Platform**: Enterprise-grade scalability and availability
 - **Serverless Design**: Scales as the load increases, minimal costs
-- **Seperation of Concern**: Front end decoupled from backend
+- **Separation of Concern**: Front end decoupled from backend
 
 ### Cost Optimization
 

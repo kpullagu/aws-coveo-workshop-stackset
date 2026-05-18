@@ -78,7 +78,3 @@ sequenceDiagram
     Headless-->>UI: followUpAnswers state update
     UI-->>User: Chained follow-up answer
 ```
-
-## Workshop Shortcut
-
-For this temporary workshop UI, the Coveo access token is exposed through Vite browser configuration. That is acceptable for the live lab because the UI is destroyed after the workshop. Production applications should issue short-lived search tokens instead.

@@ -79,7 +79,6 @@ nav:
     - Introduction: lab3/index.md
     - Architecture: lab3/architecture.md
     - Sample Queries: lab3/queries.md
-    - Instructor Guide: lab3/instructor-guide.md
 
   - Resources:
     - Architecture Diagrams: resources/diagrams.md
