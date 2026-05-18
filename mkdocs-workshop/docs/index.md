@@ -41,32 +41,9 @@ Understand when to use direct Coveo APIs, when to use AWS AgentCore with Coveo H
 
 ## Architecture At A Glance
 
-```mermaid
-graph TB
-    UI[Workshop UI]
-    BFF[Express BFF]
-    API[API Gateway]
-    DIRECT[Coveo Search / Passages / Answer APIs]
-    AGENTCORE[AgentCore Runtime]
-    MCP[Coveo Hosted MCP]
-    MEMORY[AgentCore Memory]
-    HEADLESS[Coveo Headless]
-    SEARCHAGENT[Coveo Search Agent]
-    INDEX[Coveo Index]
+**Workshop Architecture at a glance**
 
-    UI --> BFF
-    BFF --> API
-    API --> DIRECT
-    API --> AGENTCORE
-    AGENTCORE --> MCP
-    AGENTCORE <--> MEMORY
-    MCP --> INDEX
-    DIRECT --> INDEX
-
-    UI --> HEADLESS
-    HEADLESS --> SEARCHAGENT
-    SEARCHAGENT --> INDEX
-```
+![Workshop Architecture at a glance](../images/Workshop Architecture at a glance.png)
 
 ## Important Positioning
 
@@ -74,7 +51,6 @@ graph TB
 - **Lab 2** shows when AWS AgentCore is useful: agent orchestration, Hosted MCP tools, and memory-enabled sessions.
 - **Lab 3** shows the simplest native conversational search path: Coveo Search Agent with Headless follow-ups and citations.
 
-The older Bedrock Agent passage-tool lab and the standalone memory deep dive are retained in `mkdocs-workshop/retired/`, outside the published documentation tree.
 
 ## Prerequisites
 
