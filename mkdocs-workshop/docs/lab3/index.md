@@ -24,7 +24,7 @@ There is no AWS AgentCore runtime, no Lambda chat proxy, and no external memory 
 
 ## Exercise 3.1: Review Coveo Search Agent Configuration
 
-Your instructor will open the Coveo Administration Console and review:
+Your instructor will open the Coveo Administration Console and review the Search Agent Configuration including:
 
 - Search Agent ID
 - query pipeline
@@ -33,29 +33,25 @@ Your instructor will open the Coveo Administration Console and review:
 - grounding/indexed content
 - follow-up support
 
-Do not change the configuration during the workshop unless the instructor asks you to.
+1. Search Agent Configuration in Coveo Platform Console.
+  ![Search Agent Configuration](../images/SearchAgent-1.png)
 
-## Exercise 3.2: Test In Coveo Console
+2. Search Agent -Add a New agent in Coveo Platform Console.
+  ![Search Agent - New](../images/SearchAgent-2.png)
 
-In the Coveo Console Search Agent testing surface, run:
+3. Search Agent -Add a PR Model in Coveo Platform Console
+  ![Search Agent- Add PR Model](../images/SearchAgent-3.png)
 
-```text
-What is ACH and when is it commonly used?
-```
+4. Search Agent - Agent ID in Coveo Platform Console
+  ![Search Agent - Agent ID](../images/SearchAgent-4.png)
 
-Then ask:
+!!! note "Search Agent Configuration Guide"
+    For step-by-step guidance on configuring Coveo Search Agents, see the official documentation:
+    [About Coveo Search Agents](https://docs.coveo.com/en/q2pe0294/leverage-machine-learning/about-coveo-search-agents)
 
-```text
-How is that different from a wire transfer?
-```
 
-Observe:
 
-- the answer is grounded in indexed content
-- citations are returned
-- the follow-up understands the prior answer context
-
-## Exercise 3.3: Test In The Workshop UI
+## Exercise 3.2: Test In The Workshop UI
 
 1. Open the workshop UI.
 2. Select **Coveo Search Agent** from the backend selector.
@@ -66,13 +62,16 @@ Observe:
 What is ACH and when is it commonly used?
 ```
 
+  ![Search Agent - Conversation Turn 1](../images/SearchAgent-5.png)
+
+
 Expected:
 
 - A generated answer appears inside the same card, below the search row.
 - Citations appear under the answer.
 - Copy, like, and dislike controls appear.
 
-## Exercise 3.4: Ask Follow-Up Questions
+## Exercise 3.3: Ask Follow-Up Questions
 
 After the first answer loads, a **Ask a follow-up question** input appears at the bottom of the card. Type:
 
@@ -80,11 +79,20 @@ After the first answer loads, a **Ask a follow-up question** input appears at th
 How is that different from a wire transfer?
 ```
 
+  ![Search Agent - Followup - turn 2](../images/SearchAgent-6.png)
+
+
+  ![Search Agent - Followup - turn 3](../images/SearchAgent-7.png)
+
+
 Then ask:
 
 ```text
 Which one is better for recurring payments?
 ```
+
+  ![Search Agent - Followup - turn 4](../images/SearchAgent-8.png)
+
 
 Expected:
 
@@ -93,7 +101,7 @@ Expected:
 - The latest turn stays expanded.
 - The answer remains grounded in Coveo-indexed content.
 
-## Exercise 3.5: Compare With Lab 2
+## Exercise 3.4: Compare With Lab 2
 
 | Capability | AgentCore + Hosted MCP | Native Coveo Search Agent |
 |---|---|---|
@@ -106,4 +114,3 @@ Expected:
 
 You used Coveo Headless to consume a native Coveo Search Agent. This is the simplest path when the goal is grounded conversational search with citations and follow-up questions.
 
-Workshop complete.
