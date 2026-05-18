@@ -133,8 +133,20 @@ sequenceDiagram
 
 1. **Login to AWS Console**
 2. **Navigate to Amazon Bedrock** service
-3. **Click "Agents"** in the left navigation
-4. **Find and select** `workshop-coveo-agent`
+
+**Bedrock AgentCore Navigation**
+
+![Agentcore Navigation](../images/AgentCore-Navigation-new-1.png)
+Select Amazon Bedrock Agentcore to go to the Amazon Bedrock Agentcore Service page.
+
+3. **Click "Runtime"** in the left navigation
+
+**Runtime Navigation**
+
+![Runtime Navigation](../images/AgentCore-Navigation-new-2.png)
+Select 'Runtime' to view the 'workshop_CoveoAgent' runtime page.
+
+4. **Find and select** `workshop-CoveoAgent`
 5. **Click Edit** to open the Agent Builder Page
 
 **Bedrock Agent List**

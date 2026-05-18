@@ -8,7 +8,6 @@ This page compiles the live workshop architecture diagrams.
 graph TB
     subgraph "Lab 1: Direct APIs"
         UI1[Workshop UI]
-        BFF1[Express BFF]
         API1[API Gateway]
         L1[Search / Passages / Answer Lambdas]
         C1[Coveo Platform]
@@ -17,14 +16,13 @@ graph TB
 
     subgraph "Lab 2: AgentCore + Hosted MCP"
         UI2[Workshop UI Chatbot]
-        BFF2[Express BFF]
         API2[API Gateway]
         L2[AgentCore Runtime Lambda]
         Runtime[AgentCore Runtime]
         Memory[AgentCore Memory]
         MCP[Coveo Hosted MCP]
         C2[Coveo Platform]
-        UI2 --> BFF2 --> API2 --> L2 --> Runtime
+        UI2 --> API2 --> L2 --> Runtime
         Runtime <--> Memory
         Runtime --> MCP --> C2
     end
@@ -42,8 +40,7 @@ graph TB
 
 ```mermaid
 graph TB
-    UI[Workshop UI] --> BFF[Express BFF]
-    BFF --> API[API Gateway]
+    UI[Workshop UI] --> API[API Gateway]
     API --> Search[search_proxy Lambda]
     API --> Passages[passages_proxy Lambda]
     API --> Answer[answering_proxy Lambda]
@@ -60,8 +57,7 @@ graph TB
 
 ```mermaid
 graph TB
-    UI[Workshop UI Chatbot] --> BFF[Express BFF]
-    BFF --> API[API Gateway]
+    UI[Workshop UI Chatbot] --> API[API Gateway]
     API --> Lambda[AgentCore Runtime Lambda]
     Lambda --> Runtime[AgentCore Runtime]
     Runtime <--> Memory[AgentCore Memory]
