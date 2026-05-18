@@ -4,7 +4,7 @@ This two-hour workshop shows three practical ways to build grounded AI search an
 
 ## Objective
 
-Understand when to use direct Coveo APIs, when to use AWS AgentCore with Coveo Hosted MCP, and when a native Coveo Search Agent is the simplest path for grounded conversational search with follow-up questions.
+Understand when to use direct Coveo APIs, when to use AWS Bedrock AgentCore with Coveo Hosted MCP, and when a native Coveo Search Agent is the simplest path for grounded conversational search with follow-up questions.
 
 ## What You Will Build
 
