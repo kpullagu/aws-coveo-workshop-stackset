@@ -44,12 +44,16 @@ graph TB
 graph TB
     UI[Workshop UI] --> BFF[Express BFF]
     BFF --> API[API Gateway]
-    API --> Search[Search Lambda]
-    API --> Passages[Passages Lambda]
-    API --> Answer[Answer Lambda]
+    API --> Search[search_proxy Lambda]
+    API --> Passages[passages_proxy Lambda]
+    API --> Answer[answering_proxy Lambda]
+    API --> Suggest[query_suggest_proxy Lambda]
+    API --> Html[html_proxy Lambda]
     Search --> Coveo[Coveo Platform]
     Passages --> Coveo
     Answer --> Coveo
+    Suggest --> Coveo
+    Html --> Coveo
 ```
 
 ## Lab 2: AgentCore + Hosted MCP
