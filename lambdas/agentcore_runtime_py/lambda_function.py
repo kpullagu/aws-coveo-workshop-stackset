@@ -3,23 +3,19 @@
 AgentCore Runtime Lambda with Bedrock AgentCore Client implementation.
 
 This Lambda communicates with the Agent Runtime using the AWS Bedrock AgentCore service.
-The Agent Runtime orchestrates tool calls to the MCP server.
+The Agent Runtime orchestrates tool calls to Coveo Hosted MCP.
 
 Architecture:
-    UI → API Gateway → Lambda (this file) → Agent Runtime → MCP Runtime → Coveo API
+    UI -> API Gateway -> Lambda (this file) -> Agent Runtime -> Coveo Hosted MCP -> Coveo APIs
 
 Flow:
     1. Lambda receives chat (or answer) request from API Gateway
     2. Lambda invokes the Agent runtime (one input: { text, controls? })
-    3. Agent decides which MCP tools to call (answer/search/passages) and synthesizes the reply
-    4. Lambda returns a normalized JSON to the UI/BFF
-
-What changed (minimal):
-    • Added `controls` pass-through so UI/BFF can request extra fields for Coveo tools
-      e.g., controls.passages.additionalFields = ["title","clickableuri","project","uniqueid","summary"]
-    • No tool-specific payloads in Lambda for coveoMCP — the Agent chooses the tool(s)
+    3. Agent decides which Hosted MCP tools to call and synthesizes the reply
+    4. Lambda returns a normalized JSON response to the UI/BFF
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -38,6 +34,12 @@ except ImportError:
 # -------- Logging --------
 logger = logging.getLogger()
 logger.setLevel(os.environ.get('LOG_LEVEL', 'INFO'))
+
+
+def mask_identifier(value: str) -> str:
+    if not value:
+        return "missing"
+    return f"{hashlib.sha256(value.encode('utf-8')).hexdigest()[:8]}..."
 
 # Try to import boto3 for AgentCore and SSM
 try:
@@ -258,25 +260,26 @@ def get_actor_id_from_token(event: Dict[str, Any]) -> str:
     Extract stable user identity from Cognito JWT token.
     
     Priority:
-    1. Extract from Cognito authorizer context (API Gateway)
+    1. Extract from Cognito JWT authorizer context (API Gateway)
     2. Extract from JWT token in Authorization header
-    3. Default to 'anonymous'
+
+    Returns an empty string when no Cognito sub is present. The live workshop
+    must fail clearly instead of falling back to anonymous shared memory.
     """
     try:
         # Try to get from API Gateway authorizer context
         request_context = event.get('requestContext', {})
         authorizer = request_context.get('authorizer', {})
-        
-        # Check for Cognito claims
-        claims = authorizer.get('claims', {})
+
+        # HTTP API JWT authorizer shape
+        claims = authorizer.get('jwt', {}).get('claims', {})
+        if not claims:
+            # Legacy/custom authorizer shape
+            claims = authorizer.get('claims', {})
+
         if claims:
-            # Prefer 'sub' (unique user ID) over 'cognito:username'
             if 'sub' in claims:
                 return claims['sub']
-            if 'cognito:username' in claims:
-                return claims['cognito:username']
-            if 'username' in claims:
-                return claims['username']
         
         # Try to decode JWT from Authorization header
         headers = event.get('headers', {})
@@ -296,22 +299,14 @@ def get_actor_id_from_token(event: Dict[str, Any]) -> str:
                     decoded = base64.urlsafe_b64decode(payload)
                     claims = json.loads(decoded)
                     
-                    # Extract user identifier
                     if 'sub' in claims:
                         return claims['sub']
-                    if 'cognito:username' in claims:
-                        return claims['cognito:username']
-                    if 'username' in claims:
-                        return claims['username']
-                    if 'client_id' in claims:
-                        # For machine-to-machine tokens
-                        return f"client_{claims['client_id']}"
             except Exception as e:
                 logger.warning(f"Failed to decode JWT: {e}")
     except Exception as e:
         logger.warning(f"Failed to extract actor_id from token: {e}")
     
-    return "anonymous"
+    return ""
 
 def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str, event: Dict[str, Any] = None) -> Dict[str, Any]:
     """
@@ -346,13 +341,15 @@ def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str, event: D
 
         logger.info(f"Sending to Agent: {prompt}")
 
-        # Extract actor_id (user identifier) for memory
-        # Priority: 1) from token, 2) from request, 3) default
-        actor_id = get_actor_id_from_token(event) if event else "anonymous"
-        if actor_id == "anonymous":
-            actor_id = request_data.get('userId', request_data.get('user_id', 'anonymous'))
+        # Extract actor_id (user identifier) for memory. Do not use anonymous
+        # fallback in the live workshop: it would mix unrelated attendees.
+        actor_id = get_actor_id_from_token(event) if event else ""
+        if not actor_id:
+            actor_id = request_data.get('userId', request_data.get('user_id', ''))
+        if not actor_id:
+            return create_error_response(401, "Authenticated user identity is required for memory-enabled chat.")
 
-        logger.info(f"Actor ID: {actor_id}")
+        logger.info(f"Actor ID: {mask_identifier(actor_id)}")
 
         # X-Ray: Create subsegment for Agent invocation with annotations for transaction search
         if XRAY_AVAILABLE:
@@ -361,7 +358,7 @@ def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str, event: D
                 xray_recorder.put_annotation('backend', backend)
                 xray_recorder.put_annotation('sessionId', session_id)
                 xray_recorder.put_annotation('agentRuntimeArn', runtime_arn)
-                xray_recorder.put_annotation('actorId', actor_id)
+                xray_recorder.put_annotation('actorId', mask_identifier(actor_id))
                 xray_recorder.put_annotation('conversationType', conversation_type)
                 xray_recorder.put_annotation('endSession', end_session)
             except Exception as e:
@@ -395,7 +392,10 @@ def handle_chat_request(request_data: Dict[str, Any], runtime_arn: str, event: D
             "response": answer,            # keep both keys for UI compatibility
             "sessionId": session_id,
             "backend": backend,
-            "sources": sources
+            "sources": sources,
+            "sessionEnded": bool(end_session),
+            "memoryEnabled": True,
+            "actorIdPresent": True
         })
 
     except Exception as e:

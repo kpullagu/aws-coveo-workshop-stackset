@@ -7,7 +7,7 @@ This directory contains the complete frontend implementation for the AWS Coveo W
 ```
 frontend/
 ├── server.js                 # Express BFF server
-├── package.json              # BFF dependencies (express, aws-sdk, etc.)
+├── package.json              # BFF dependencies (express, axios, Cognito JWT validation, etc.)
 ├── package-lock.json         # BFF dependency lock
 ├── node_modules/             # BFF dependencies (not in git)
 ├── Dockerfile                # Multi-stage Docker build
@@ -17,22 +17,23 @@ frontend/
     ├── package-lock.json     # React dependency lock
     ├── node_modules/         # React dependencies (not in git)
     ├── .env                  # React environment variables
+    ├── index.html            # Vite HTML entrypoint
+    ├── vite.config.js        # Vite build/dev server configuration
     ├── public/               # Static assets
-    │   ├── index.html        # HTML template
     │   └── manifest.json     # PWA manifest
     ├── src/                  # React source code
     │   ├── components/       # React components
-    │   │   ├── SearchHeader.js      # Search bar with centered clear button
-    │   │   ├── SearchResults.js     # Results display with load more
-    │   │   ├── Sidebar.js           # Scrollable facet filters
-    │   │   ├── AuthProvider.js      # Cognito authentication
-    │   │   ├── LoginButton.js       # Login/logout UI
-    │   │   ├── QuickViewModal.js    # Document preview modal
-    │   │   └── ChatBot.js           # Chat interface
+    │   │   ├── SearchHeader.jsx     # Search bar with centered clear button
+    │   │   ├── SearchResults.jsx    # Results display with load more
+    │   │   ├── Sidebar.jsx          # Scrollable facet filters
+    │   │   ├── AuthProvider.jsx     # Cognito authentication
+    │   │   ├── LoginButton.jsx      # Login/logout UI
+    │   │   ├── QuickViewModal.jsx   # Document preview modal
+    │   │   └── ChatBot.jsx          # Chat interface
     │   ├── services/
     │   │   └── api.js        # API client (search, passages, answer, chat)
-    │   ├── App.js            # Main application component
-    │   ├── index.js          # React entry point
+    │   ├── App.jsx           # Main application component
+    │   ├── index.jsx         # React entry point
     │   └── index.css         # Global styles
     └── build/                # Production build (created by npm run build)
 ```
@@ -47,7 +48,7 @@ frontend/
 - 5 API endpoints: `/api/search`, `/api/passages`, `/api/answer`, `/api/chat`, `/api/suggest`
 - 3 backend modes: Coveo, BedrockAgent, CoveoMCP
 - Cognito JWT token validation
-- Health check endpoint: `/api/health`
+- Health check endpoints: `/health` and `/api/health`
 - Serves React static build from `client/build/`
 
 **Key Functions**:
@@ -148,6 +149,12 @@ COVEO_SEARCH_HUB=aws-workshop
 COVEO_ANSWER_CONFIG_ID=<your-answer-config-id>
 COVEO_RESULTS_PER_PAGE=20
 
+# Native Coveo Search Agent with Headless
+# Reuses COVEO_ORG_ID, COVEO_SEARCH_API_KEY, COVEO_SEARCH_HUB, and
+# COVEO_SEARCH_PIPELINE from the shared workshop configuration.
+COVEO_SEARCH_AGENT_ID=<your-search-agent-id>
+COVEO_ENVIRONMENT=prod
+
 # AWS Configuration
 AWS_REGION=us-east-1
 API_GATEWAY_URL=https://xxxxx.execute-api.us-east-1.amazonaws.com
@@ -179,7 +186,7 @@ User Browser → React UI → Express BFF → API Gateway → Lambda → Externa
 
 ### Health Check
 ```bash
-GET /api/health
+GET /health
 ```
 
 Returns server status and configuration.
@@ -189,7 +196,7 @@ Returns server status and configuration.
 POST /api/search
 {
   "query": "cloud computing",
-  "backendMode": "coveo",  # or "bedrockAgent" or "coveoMCP"
+  "backendMode": "coveo",  # or "coveoMCP"
   "numberOfResults": 10
 }
 ```
@@ -232,21 +239,23 @@ The BFF server routes all requests through **API Gateway**, which then invokes t
 - Fast, single-turn responses
 - Direct Coveo API integration
 
-### BedrockAgent Mode (Multi-turn AI)
-- BFF → API Gateway → Lambda (agentcore-runtime) → AgentCore Runtime → Bedrock
-- Multi-turn conversations with streaming responses
-- AgentCore Memory for conversation context
+### CoveoMCP Mode (AgentCore + Hosted MCP)
+- BFF → API Gateway → Lambda (agentcore-runtime) → AgentCore Runtime → Coveo Hosted MCP → Coveo APIs
+- Tool-based orchestration through Coveo Hosted MCP
+- Memory-enabled chatbot behavior through AgentCore Memory
 
-### CoveoMCP Mode (Tool-based)
-- BFF → API Gateway → Lambda (agentcore-runtime) → AgentCore Runtime → MCP Server → Coveo API
-- Tool-based orchestration with MCP protocol
-- Extensible architecture for custom tools
+### Coveo Search Agent Mode (Headless)
+- React UI → Coveo Headless → Coveo Search Agent → Coveo Index
+- Native generated answers, citations, and follow-up questions
+- No `/api/chat`, AgentCore runtime, Lambda chat proxy, or external memory layer
+
+The older Bedrock Agent passage-tool backend can remain configured for retired material, but it is hidden from the live workshop UI.
 
 ## Testing
 
 ```bash
 # Test health endpoint
-curl http://localhost:3003/api/health
+curl http://localhost:3003/health
 
 # Test search (Coveo mode)
 curl -X POST http://localhost:3003/api/search \
@@ -261,28 +270,27 @@ curl -X POST http://localhost:3003/api/chat \
 
 ## Deployment
 
-The frontend is deployed to **AWS App Runner** as a containerized application.
+The frontend is deployed to **Amazon ECS Express Mode** as a containerized application.
 
 ### Deployment Scripts
 
 Located in the root `scripts/` directory:
 - `deploy-complete-workshop.sh` - Complete one-click deployment (includes UI)
-- `deploy-ui-apprunner.sh` - Deploy UI to App Runner
+- `scripts/stacksets/13-deploy-layer4-ui.sh` - Deploy UI to ECS Express
 - `destroy.sh` - Complete cleanup including UI
 
 ### Deployment Process
 
 1. **Build Docker image** - Multi-stage build (React + Express)
 2. **Push to ECR** - Amazon Elastic Container Registry
-3. **Deploy to App Runner** - Automatic deployment and scaling
+3. **Deploy to ECS Express** - Managed Fargate service, ALB, and scaling
 4. **Update Cognito callbacks** - Configure OAuth redirect URLs
 
 ### Manual Deployment
 
 ```bash
-# Deploy UI to App Runner
-cd scripts
-./deploy-ui-apprunner.sh --region us-east-1
+# Deploy the Layer 4 UI stackset
+bash scripts/stacksets/13-deploy-layer4-ui.sh
 ```
 
 ## Architecture
@@ -320,8 +328,8 @@ cd scripts
 │  • answering-proxy       → Coveo Answering API          │
 │  • query-suggest-proxy   → Coveo Query Suggest API      │
 │  • html-proxy            → Coveo HTML API               │
-│  • agentcore-runtime     → AgentCore Runtime/MCP        │
-│  • bedrock-agent-chat    → Bedrock Agent                │
+│  • agentcore-runtime     → AgentCore Runtime/Hosted MCP │
+│  • bedrock-agent-chat    → Retired optional backend     │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -354,7 +362,7 @@ cd scripts
 - **API Client**: Axios for HTTP requests
 - **Node.js**: 18.x LTS
 - **Docker**: Multi-stage build for optimized images
-- **Deployment**: AWS App Runner with auto-scaling
+- **Deployment**: Amazon ECS Express Mode
 
 ## Recent Updates
 
@@ -367,7 +375,7 @@ cd scripts
 ### Backend Integration
 - ✅ **Three backend modes** fully implemented
 - ✅ **AgentCore Runtime** integration
-- ✅ **MCP Server** support
+- ✅ **Coveo Hosted MCP** support
 - ✅ **Streaming responses** for AI answers
 
 ## Status
@@ -375,7 +383,7 @@ cd scripts
 ✅ **Production Ready** - All three backend modes operational  
 ✅ **Coveo Mode** - Direct API integration (fast, single-turn)  
 ✅ **BedrockAgent Mode** - AgentCore Runtime with streaming  
-✅ **CoveoMCP Mode** - MCP Server with tool orchestration
+✅ **CoveoMCP Mode** - Hosted MCP with tool orchestration
 
 ---
 

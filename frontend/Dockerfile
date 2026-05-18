@@ -1,29 +1,31 @@
 # Multi-stage Dockerfile for React frontend with Node.js backend
-FROM node:18-alpine AS build
+FROM node:24-alpine AS build
 
 # Set working directory for React build
 WORKDIR /app/client
 
 # Copy React app package files
-COPY client/package.json ./
-RUN npm install
+COPY client/package*.json ./
+RUN npm ci
 
 # Copy React app source
+COPY client/index.html ./
 COPY client/src ./src
 COPY client/public ./public
+COPY client/vite.config.js ./
 
 # Build React app
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:24-alpine AS production
 
 # Set working directory
 WORKDIR /app
 
 # Copy backend package files
 COPY package*.json ./
-RUN npm install --only=production
+RUN npm ci --omit=dev
 
 # Copy backend source
 COPY server.js ./
@@ -35,6 +37,7 @@ COPY server.js ./
 COPY --from=build /app/client/build ./client/build
 
 # Create non-root user
+RUN apk add --no-cache curl
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
 

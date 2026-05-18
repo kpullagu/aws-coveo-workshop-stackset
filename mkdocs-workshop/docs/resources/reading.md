@@ -1,59 +1,49 @@
-# Documentation Resources
+# Additional Reading
 
-This page provides links to official documentation for the technologies used in this workshop.
-
-## Coveo Platform
-
-### Official Documentation
-
-- [Coveo Platform Overview](https://docs.coveo.com/)
-- [Getting Started](https://docs.coveo.com/en/1546/)
-- [Platform Concepts](https://docs.coveo.com/en/1461/)
-
-### Search APIs
-
-- [Search API Overview](https://docs.coveo.com/en/13/)
-- [Search API Reference](https://docs.coveo.com/en/13/api-reference/search-api)
-- [Query Syntax](https://docs.coveo.com/en/1552/)
-- [Query Parameters](https://docs.coveo.com/en/1461/)
-
-### Passage Retrieval
-
-- [Passages API](https://docs.coveo.com/en/3448/)
-- [Semantic Search](https://docs.coveo.com/en/3448/)
-- [Relevance Tuning](https://docs.coveo.com/en/1461/)
-
-### Answer Generation
-
-- [Coveo Answer API](https://docs.coveo.com/en/3448/)
-- [Generative Answering](https://docs.coveo.com/en/3448/)
-- [Citation Management](https://docs.coveo.com/en/3448/)
-
-### Machine Learning
-
-- [Coveo ML Overview](https://docs.coveo.com/en/1461/)
-- [Query Suggestions](https://docs.coveo.com/en/1461/)
-- [Automatic Relevance Tuning](https://docs.coveo.com/en/1461/)
-
-### Community & Support
-
-- [Coveo Community](https://connect.coveo.com/)
-- [Coveo Blog](https://blog.coveo.com/)
-- [Coveo Technical Blog](https://blog.coveo.com/category/technical/)
-- [Coveo YouTube Channel](https://www.youtube.com/c/Coveo)
-- [Coveo Academy](https://academy.coveo.com/)
-- [Coveo Certification](https://www.coveo.com/en/services/training)
-
-### Coveo Training
-
-- [Coveo Academy](https://academy.coveo.com/)
-- [Coveo Certification](https://www.coveo.com/en/services/training)
-
-### Coveo Videos
-
-- [Coveo YouTube Channel](https://www.youtube.com/c/Coveo)
-- [Coveo Webinars](https://www.coveo.com/en/resources/webinars)
+Official documentation for the technologies used in this workshop.
 
 ---
 
-This list is not exhaustive. New resources are constantly being published. Check the official AWS and Coveo documentation sites for the latest information.
+## Coveo Platform
+
+- [Coveo Documentation Home](https://docs.coveo.com/en/)
+- [Coveo Developer Portal](https://developer.coveo.com/)
+- [Coveo Community (connect.coveo.com)](https://connect.coveo.com/)
+- [Coveo Academy](https://academy.coveo.com/)
+- [Coveo Blog](https://blog.coveo.com/)
+
+## Coveo APIs Used In Lab 1
+
+- [Coveo Search API](https://docs.coveo.com/en/13/)
+- [Coveo Passage Retrieval](https://docs.coveo.com/en/3330/)
+- [Coveo Generative Answering](https://docs.coveo.com/en/n5r97344/)
+- [Query Syntax Reference](https://docs.coveo.com/en/1552/)
+
+## Coveo Headless SDK (Lab 3)
+
+- [Coveo Headless SDK Overview](https://docs.coveo.com/en/headless/latest/)
+- [buildSearchEngine](https://docs.coveo.com/en/headless/latest/reference/search/search-engine/)
+- [buildSearchBox](https://docs.coveo.com/en/headless/latest/reference/search/controllers/search-box/)
+- [buildGeneratedAnswer](https://docs.coveo.com/en/headless/latest/reference/search/controllers/generated-answer/)
+
+## Coveo Search Agent & Hosted MCP
+
+- [Coveo Hosted MCP Overview](https://docs.coveo.com/en/mcp/)
+- [Coveo Search Agent](https://docs.coveo.com/en/search-agent/)
+
+## AWS AgentCore (Lab 2)
+
+- [Amazon Bedrock AgentCore Overview](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html)
+- [AgentCore Runtime](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime.html)
+- [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html)
+- [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
+
+## AWS Services Used In This Workshop
+
+- [Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/)
+- [AWS CloudFormation StackSets](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/what-is-cfnstacksets.html)
+- [Amazon Cognito](https://docs.aws.amazon.com/cognito/latest/developerguide/)
+- [AWS Lambda](https://docs.aws.amazon.com/lambda/latest/dg/)
+- [Amazon API Gateway](https://docs.aws.amazon.com/apigateway/latest/developerguide/)
+- [Amazon ECR](https://docs.aws.amazon.com/AmazonECR/latest/userguide/)
+- [Amazon ECS](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/)

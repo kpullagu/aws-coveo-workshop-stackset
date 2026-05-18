@@ -28,12 +28,18 @@ source "$SCRIPT_DIR/config.sh"
 # Validate environment variables
 validate_env || exit 1
 
+ACTIVE_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --region "$AWS_REGION")
+if [ "$ACTIVE_ACCOUNT_ID" != "$MASTER_ACCOUNT_ID" ]; then
+    log_error "Active AWS account ($ACTIVE_ACCOUNT_ID) does not match MASTER_ACCOUNT_ID ($MASTER_ACCOUNT_ID)"
+    log_error "This script must run with credentials for the StackSets management/delegated admin account."
+    exit 1
+fi
+
 # Function to verify ECR images exist
 verify_ecr_images() {
     log_info "Verifying ECR images exist..."
     
     local REQUIRED_IMAGES=(
-        "${STACK_PREFIX}-coveo-mcp-server-master"
         "${STACK_PREFIX}-ui-master"
         "${STACK_PREFIX}-coveo-agent-master"
     )
@@ -520,26 +526,21 @@ log_info "Step 1: Setting up master account..."
 bash scripts/stacksets/01-setup-master-ecr.sh
 log_success "Master account setup complete"
 
-# Step 2: Build and push MCP image
-log_info "Step 2: Building and pushing MCP Server image..."
-bash scripts/stacksets/02-build-push-mcp-image.sh
-log_success "MCP Server image pushed"
-
-# Step 3: Build and push UI image
-log_info "Step 3: Building and pushing UI image..."
+# Step 2: Build and push UI image
+log_info "Step 2: Building and pushing UI image..."
 bash scripts/stacksets/03-build-push-ui-image.sh
 log_success "UI image pushed"
 
-# Step 3.5: Build and push Coveo Agent image
-log_info "Step 3.5: Building and pushing Coveo Agent image..."
+# Step 3: Build and push Coveo Agent image
+log_info "Step 3: Building and pushing Coveo Agent image..."
 bash scripts/stacksets/02b-build-push-agent-image.sh
 log_success "Coveo Agent image pushed"
 
 # Verify all ECR images are available
 verify_ecr_images
 
-# Step 3.9: Update ECR repository policies for cross-account access
-log_info "Step 3.9: Updating ECR repository policies for cross-account access..."
+# Step 3.5: Update ECR repository policies for cross-account access
+log_info "Step 3.5: Updating ECR repository policies for cross-account access..."
 if [ -f scripts/stacksets/update-ecr-repo-policy.sh ]; then
     bash scripts/stacksets/update-ecr-repo-policy.sh
     log_success "ECR repository policies updated"
@@ -672,16 +673,16 @@ log_success "Bedrock model invocation logging enabled"
 
 # Step 9: Deploy Layer 4 - UI
 log_info "Step 9: Deploying Layer 4 - UI..."
-log_info "This layer creates App Runner services"
+log_info "This layer creates ECS Express services"
 bash scripts/stacksets/13-deploy-layer4-ui.sh
 
 # Wait for Layer 4 to be fully deployed
-log_info "Waiting for Layer 4 to complete (App Runner deployment may take 5-10 minutes)..."
+log_info "Waiting for Layer 4 to complete (ECS Express deployment may take 5-10 minutes)..."
 wait_for_stackset_complete "workshop-layer4-ui" 25
 fix_outdated_instances "workshop-layer4-ui"
 
-# Give App Runner time to fully start
-log_info "Waiting for App Runner services to be fully running..."
+# Give ECS Express time to fully start
+log_info "Waiting for ECS Express services to be fully running..."
 sleep 60
 log_success "Layer 4 deployed and ready"
 
@@ -693,7 +694,7 @@ log_success "X-Ray CloudWatch Logs ingestion enabled"
 
 # Step 10: Post-deployment configuration and collect deployment information
 log_info "Step 10: Post-deployment configuration and collecting deployment information..."
-log_info "This includes: SSM parameters, Cognito test users, callback URLs, App Runner env vars, and deployment info"
+log_info "This includes: SSM parameters, Cognito test users, callback URLs, ECS service env vars, and deployment info"
 bash scripts/stacksets/14-post-deployment-config.sh
 log_success "Post-deployment configuration complete and deployment information collected"
 
@@ -754,11 +755,11 @@ if [ "$ALL_SUCCESS" = true ]; then
     log_info "Next steps:"
     echo "1. ✅ All resources are deployed and ready"
     echo "2. 🧪 Test functionality in sample accounts"
-    echo "3. 📋 Collect App Runner URLs from accounts"
+    echo "3. 📋 Collect ECS Express UI URLs from accounts"
     echo "4. 👥 Distribute URLs to workshop participants"
     echo ""
     log_info "Useful commands:"
-    echo "  # Get App Runner URLs from all accounts"
+    echo "  # Get UI URLs from all accounts"
     echo "  bash scripts/show-deployment-info.sh"
     echo ""
     echo "  # Monitor ongoing status"

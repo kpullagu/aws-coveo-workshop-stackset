@@ -304,7 +304,7 @@ for ACCOUNT_ID in ${ACCOUNT_ARRAY[@]}; do
     log_info "  Deleting CloudWatch log groups..."
     LOG_PREFIXES=(
         "/aws/lambda/${STACK_PREFIX}"
-        "/aws/apprunner/${STACK_PREFIX}"
+        "/aws/ecs/${STACK_PREFIX}"
         "/aws/apigateway/${STACK_PREFIX}"
         "/aws/bedrock-agentcore/runtimes/${STACK_PREFIX}"
         "/aws/bedrock/modelinvocations"

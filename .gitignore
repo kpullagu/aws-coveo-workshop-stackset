@@ -80,6 +80,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 package-lock.json
+!/frontend/package-lock.json
+!/frontend/client/package-lock.json
 yarn.lock
 dist/
 build/
@@ -176,3 +178,4 @@ workshop-deployment-info.csv
 mkdocs-workshop/site/
 
 
+HOSTED_MCP_WORKSHOP_REFRESH_BLUEPRINT.md

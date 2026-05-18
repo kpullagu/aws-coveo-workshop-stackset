@@ -26,7 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Add progress tracking for labs
-  const labPages = ['lab1', 'lab2', 'lab3', 'lab4'];
+  const labPages = ['lab1', 'lab2', 'lab3'];
   const currentPath = window.location.pathname;
   
   labPages.forEach((lab, index) => {
@@ -70,8 +70,8 @@ function highlightQuery(query) {
 function formatBackendMode(mode) {
   const modes = {
     'coveo': 'Coveo Direct API',
-    'bedrockAgent': 'Bedrock Agent',
-    'coveoMCP': 'Coveo MCP Server'
+    'coveoMCP': 'Coveo Hosted MCP Agent',
+    'coveoSearchAgent': 'Coveo Search Agent'
   };
   return modes[mode] || mode;
 }

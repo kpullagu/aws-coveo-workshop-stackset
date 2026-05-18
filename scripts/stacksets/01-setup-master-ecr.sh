@@ -5,9 +5,19 @@
 
 set -e
 
-STACK_PREFIX="workshop"
-AWS_REGION="${AWS_REGION:-us-east-1}"
-MASTER_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+# Load configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+
+# Ensure we're in the project root
+cd "$SCRIPT_DIR/../.."
+
+ACTIVE_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --region "$AWS_REGION")
+if [ "$ACTIVE_ACCOUNT_ID" != "$MASTER_ACCOUNT_ID" ]; then
+  log_error "Active AWS account ($ACTIVE_ACCOUNT_ID) does not match MASTER_ACCOUNT_ID ($MASTER_ACCOUNT_ID)"
+  log_error "Use credentials for the StackSets management/delegated admin account before deploying."
+  exit 1
+fi
 
 echo "=========================================="
 echo "Setting up Master Account ECR Repositories"
@@ -16,10 +26,10 @@ echo "Master Account: $MASTER_ACCOUNT_ID"
 echo "Region: $AWS_REGION"
 echo ""
 
-# Create MCP Server repository
-echo "Creating MCP Server ECR repository..."
+# Create Agent repository
+echo "Creating Coveo Agent ECR repository..."
 aws ecr create-repository \
-  --repository-name "${STACK_PREFIX}-coveo-mcp-server-master" \
+  --repository-name "${STACK_PREFIX}-coveo-agent-master" \
   --image-scanning-configuration scanOnPush=true \
   --encryption-configuration encryptionType=AES256 \
   --region "$AWS_REGION" 2>/dev/null || echo "Repository already exists"
@@ -35,7 +45,7 @@ aws ecr create-repository \
 # Set lifecycle policies
 echo "Setting lifecycle policies..."
 aws ecr put-lifecycle-policy \
-  --repository-name "${STACK_PREFIX}-coveo-mcp-server-master" \
+  --repository-name "${STACK_PREFIX}-coveo-agent-master" \
   --lifecycle-policy-text '{
     "rules": [{
       "rulePriority": 1,
@@ -69,5 +79,5 @@ aws ecr put-lifecycle-policy \
 echo ""
 echo "✅ Master ECR repositories created successfully!"
 echo ""
-echo "MCP Server: ${MASTER_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${STACK_PREFIX}-coveo-mcp-server-master"
+echo "Coveo Agent: ${MASTER_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${STACK_PREFIX}-coveo-agent-master"
 echo "UI: ${MASTER_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${STACK_PREFIX}-ui-master"

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Modern Coveo Search UI with multi-backend support",
   "main": "server.js",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "nodemon server.js",
@@ -12,16 +15,14 @@
     "install-all": "npm install && cd client && npm install"
   },
   "dependencies": {
-    "aws-sdk": "^2.1692.0",
-    "axios": "^1.6.0",
-    "compression": "^1.7.4",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "helmet": "^7.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "jwks-rsa": "^3.2.0",
-    "uuid": "^9.0.1"
+    "axios": "latest",
+    "compression": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "helmet": "latest",
+    "jsonwebtoken": "latest",
+    "jwks-rsa": "latest"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

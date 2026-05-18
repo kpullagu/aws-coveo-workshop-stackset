@@ -21,7 +21,6 @@ ACCOUNT_IDS=$(aws organizations list-accounts-for-parent \
 
 # ECR repositories
 REPOS=(
-    "${STACK_PREFIX}-coveo-mcp-server-master"
     "${STACK_PREFIX}-ui-master"
     "${STACK_PREFIX}-coveo-agent-master"
 )

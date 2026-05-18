@@ -18,8 +18,8 @@ log_info "=========================================="
 log_info "This will configure all accounts with:"
 log_info "  1. SSM Parameters (Coveo credentials)"
 log_info "  2. Cognito test users"
-log_info "  3. Cognito callback URLs"
-log_info "  4. App Runner environment variables"
+log_info "  3. Hosted MCP parameter validation"
+log_info "  4. Cognito callback URLs"
 log_info "  5. Collect deployment information"
 log_info "=========================================="
 
@@ -41,6 +41,17 @@ assume_role() {
         --role-session-name "post-config-${account_id}" \
         --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
         --output text
+}
+
+normalize_service_url() {
+    local raw_url="$1"
+    if [ -z "$raw_url" ] || [ "$raw_url" = "None" ] || [ "$raw_url" = "Not deployed" ]; then
+        echo "Not deployed"
+    elif [[ "$raw_url" == http://* || "$raw_url" == https://* ]]; then
+        echo "$raw_url"
+    else
+        echo "https://$raw_url"
+    fi
 }
 
 # Get list of accounts
@@ -197,33 +208,48 @@ for ACCOUNT_ID in $ACCOUNT_IDS; do
     
     log_success "Test user configured"
     
-    # Step 4: Get App Runner URL
-    log_info "Step 4: Getting App Runner URL..."
-    
-    APP_RUNNER_URL=""
+    # Step 4: Validate Hosted MCP parameters and get UI service URL
+    log_info "Step 4: Validating Hosted MCP parameters and getting UI service URL..."
+
+    for PARAM_NAME in \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-config-name" \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-endpoint" \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-auth-mode" \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-api-key" \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-search-hub"; do
+        if ! aws ssm get-parameter \
+            --name "$PARAM_NAME" \
+            --with-decryption \
+            --region "$AWS_REGION" >/dev/null 2>&1; then
+            log_error "Missing required Hosted MCP parameter: $PARAM_NAME"
+            echo -e "${AWS_ACCESS_PORTAL}\t${ACCOUNT_ID}\t${ACCOUNT_NAME}\t${AWS_USERNAME}\t\tERROR: Missing Hosted MCP SSM parameters\t${UI_LOGIN_USERNAME}\t${UI_LOGIN_PASSWORD}" >> "$OUTPUT_FILE"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            COUNTER=$((COUNTER + 1))
+            continue
+        fi
+    done
+
+    UI_SERVICE_URL=""
     if [ -n "$UI_STACK" ] && [ "$UI_STACK" != "null" ]; then
-        APP_RUNNER_URL=$(aws cloudformation describe-stacks \
+        UI_SERVICE_URL=$(aws cloudformation describe-stacks \
             --stack-name "$UI_STACK" \
             --region "$AWS_REGION" \
             --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" \
             --output text 2>/dev/null || echo "")
     fi
-    
-    if [ -z "$APP_RUNNER_URL" ]; then
-        APP_RUNNER_URL="Not deployed"
-    fi
-    
-    log_success "App Runner URL: https://$APP_RUNNER_URL"
-    
+
+    FORMATTED_UI_URL=$(normalize_service_url "$UI_SERVICE_URL")
+    log_success "UI URL: $FORMATTED_UI_URL"
+
     # Step 5: Update Cognito callback URLs
-    if [ "$APP_RUNNER_URL" != "Not deployed" ]; then
+    if [ "$FORMATTED_UI_URL" != "Not deployed" ]; then
         log_info "Step 5: Updating Cognito callback URLs..."
         
         aws cognito-idp update-user-pool-client \
             --user-pool-id "$USER_POOL_ID" \
             --client-id "$CLIENT_ID" \
-            --callback-urls "https://$APP_RUNNER_URL" "http://localhost:3000" \
-            --logout-urls "https://$APP_RUNNER_URL" "http://localhost:3000" \
+            --callback-urls "$FORMATTED_UI_URL" "http://localhost:3000" \
+            --logout-urls "$FORMATTED_UI_URL" "http://localhost:3000" \
             --allowed-o-auth-flows "code" \
             --allowed-o-auth-scopes "email" "openid" "profile" \
             --allowed-o-auth-flows-user-pool-client \
@@ -233,77 +259,7 @@ for ACCOUNT_ID in $ACCOUNT_IDS; do
         
         log_success "Callback URLs updated"
     fi
-    
-    # Step 6: Update App Runner environment variables
-    if [ "$APP_RUNNER_URL" != "Not deployed" ]; then
-        log_info "Step 6: Updating App Runner environment variables..."
-        
-        SERVICE_ARN=$(aws apprunner list-services \
-            --region "$AWS_REGION" \
-            --query "ServiceSummaryList[?contains(ServiceName, '${STACK_PREFIX}')].ServiceArn | [0]" \
-            --output text 2>/dev/null || echo "")
-        
-        if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
-            # Get current config
-            CURRENT_CONFIG=$(aws apprunner describe-service \
-                --service-arn "$SERVICE_ARN" \
-                --region "$AWS_REGION" \
-                --output json)
-            
-            IMAGE_ID=$(echo "$CURRENT_CONFIG" | jq -r '.Service.SourceConfiguration.ImageRepository.ImageIdentifier')
-            IMAGE_TYPE=$(echo "$CURRENT_CONFIG" | jq -r '.Service.SourceConfiguration.ImageRepository.ImageRepositoryType')
-            PORT=$(echo "$CURRENT_CONFIG" | jq -r '.Service.SourceConfiguration.ImageRepository.ImageConfiguration.Port // "3003"')
-            CURRENT_ENV_DICT=$(echo "$CURRENT_CONFIG" | jq -r '.Service.SourceConfiguration.ImageRepository.ImageConfiguration.RuntimeEnvironmentVariables // {}')
-            
-            # Add all required environment variables
-            NEW_ENV_DICT=$(echo "$CURRENT_ENV_DICT" | jq \
-                --arg pool "$USER_POOL_ID" \
-                --arg client "$CLIENT_ID" \
-                --arg domain "$COGNITO_DOMAIN" \
-                --arg region "$AWS_REGION" \
-                '. + {
-                    COGNITO_USER_POOL_ID: $pool,
-                    COGNITO_CLIENT_ID: $client,
-                    COGNITO_DOMAIN: $domain,
-                    COGNITO_REGION: $region
-                }')
-            
-            # Create temp JSON
-            TEMP_JSON=$(mktemp)
-            cat > "$TEMP_JSON" <<EOF
-{
-  "ImageRepository": {
-    "ImageIdentifier": "$IMAGE_ID",
-    "ImageRepositoryType": "$IMAGE_TYPE",
-    "ImageConfiguration": {
-      "Port": "$PORT",
-      "RuntimeEnvironmentVariables": $NEW_ENV_DICT
-    }
-  }
-}
-EOF
-            
-            # Update service
-            aws apprunner update-service \
-                --service-arn "$SERVICE_ARN" \
-                --source-configuration file://"$TEMP_JSON" \
-                --region "$AWS_REGION" >/dev/null 2>&1
-            
-            rm -f "$TEMP_JSON"
-            
-            log_success "App Runner environment variables updated"
-            log_info "Waiting for service to restart..."
-            sleep 30
-        fi
-    fi
-    
-    # Format UI URL
-    if [ "$APP_RUNNER_URL" != "Not deployed" ]; then
-        FORMATTED_UI_URL="https://$APP_RUNNER_URL"
-    else
-        FORMATTED_UI_URL="Not deployed"
-    fi
-    
+
     # Add to CSV (tab-separated)
     # Format: AWS Access Portal, AWS Account ID, AWS Account Name, AWS User Name, AWS Password (empty), UI URL, UI User Login User Name, UI Login Password
     echo -e "${AWS_ACCESS_PORTAL}\t${ACCOUNT_ID}\t${ACCOUNT_NAME}\t${AWS_USERNAME}\t\t${FORMATTED_UI_URL}\t${UI_LOGIN_USERNAME}\t${UI_LOGIN_PASSWORD}" >> "$OUTPUT_FILE"

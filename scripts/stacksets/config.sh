@@ -36,6 +36,15 @@ else
     exit 1
 fi
 
+# When a deployment profile is configured, prefer it over any inherited
+# temporary session credentials from prior child-account work.
+if [ -n "${AWS_PROFILE:-}" ]; then
+    unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SECURITY_TOKEN
+    export AWS_PROFILE
+    export AWS_DEFAULT_PROFILE="$AWS_PROFILE"
+    export AWS_SDK_LOAD_CONFIG=1
+fi
+
 # Validate required variables
 REQUIRED_VARS=(
     "MASTER_ACCOUNT_ID"
@@ -74,9 +83,13 @@ export COGNITO_DOMAIN_PREFIX_FORMAT="workshop"  # Will be: workshop-{AccountId}
 
 # Bedrock Configuration (loaded from .env.stacksets, default set above)
 
-# App Runner Configuration
-export APPRUNNER_CPU="1024"      # 1 vCPU
-export APPRUNNER_MEMORY="2048"   # 2 GB
+# UI Service Configuration
+export UI_DEPLOY_TARGET="${UI_DEPLOY_TARGET:-ecs-express}"
+export UI_CONTAINER_PORT="${UI_CONTAINER_PORT:-3003}"
+export UI_HEALTH_CHECK_PATH="${UI_HEALTH_CHECK_PATH:-/health}"
+export UI_CPU="${UI_CPU:-1024}"
+export UI_MEMORY="${UI_MEMORY:-2048}"
+export UI_IMAGE_TAG="${UI_IMAGE_TAG:-latest}"
 
 # Lambda Layer Configuration
 export USE_SHARED_LAMBDA_LAYER="true"  # Shared from master account
@@ -86,7 +99,7 @@ export MAX_CONCURRENT_ACCOUNTS="10"     # Deploy to 10 accounts at a time
 export FAILURE_TOLERANCE_COUNT="5"      # Allow 5 failures before stopping
 
 # ECR Configuration
-export MCP_SERVER_REPO_NAME="${STACK_PREFIX}-coveo-mcp-server-master"
+export AGENT_REPO_NAME="${STACK_PREFIX}-coveo-agent-master"
 export UI_REPO_NAME="${STACK_PREFIX}-ui-master"
 
 # S3 Configuration
@@ -111,7 +124,13 @@ validate_env() {
     
     if [ -z "$COVEO_ORG_ID" ]; then missing+=("COVEO_ORG_ID"); fi
     if [ -z "$COVEO_SEARCH_API_KEY" ]; then missing+=("COVEO_SEARCH_API_KEY"); fi
+    if [ -z "$COVEO_SEARCH_AGENT_ID" ]; then missing+=("COVEO_SEARCH_AGENT_ID"); fi
     if [ -z "$COVEO_ANSWER_CONFIG_ID" ]; then missing+=("COVEO_ANSWER_CONFIG_ID"); fi
+    if [ -z "$COVEO_HOSTED_MCP_CONFIG_NAME" ]; then missing+=("COVEO_HOSTED_MCP_CONFIG_NAME"); fi
+    if [ -z "$COVEO_HOSTED_MCP_ENDPOINT" ]; then missing+=("COVEO_HOSTED_MCP_ENDPOINT"); fi
+    if [ -z "$COVEO_HOSTED_MCP_AUTH_MODE" ]; then missing+=("COVEO_HOSTED_MCP_AUTH_MODE"); fi
+    if [ -z "$COVEO_HOSTED_MCP_API_KEY" ]; then missing+=("COVEO_HOSTED_MCP_API_KEY"); fi
+    if [ -z "$COVEO_HOSTED_MCP_SEARCH_HUB" ]; then missing+=("COVEO_HOSTED_MCP_SEARCH_HUB"); fi
     
     if [ ${#missing[@]} -gt 0 ]; then
         log_error "Missing required environment variables: ${missing[*]}"
@@ -134,9 +153,11 @@ show_config() {
     echo "Master Account ID: $MASTER_ACCOUNT_ID"
     echo "OU ID: $OU_ID"
     echo "AWS Region: $AWS_REGION"
+    echo "AWS Profile: ${AWS_PROFILE:-default shell credentials}"
     echo "Stack Prefix: $STACK_PREFIX"
     echo "Test User: $TEST_USER_EMAIL"
     echo "Bedrock Model: $BEDROCK_MODEL"
+    echo "UI Deploy Target: $UI_DEPLOY_TARGET"
     echo "Shared Lambda Layer: $USE_SHARED_LAMBDA_LAYER"
     echo "Max Concurrent: $MAX_CONCURRENT_ACCOUNTS accounts"
     echo "Failure Tolerance: $FAILURE_TOLERANCE_COUNT accounts"

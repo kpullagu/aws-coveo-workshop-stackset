@@ -65,6 +65,7 @@ Environment Variables (Optional):
 import json
 import logging
 import os
+import uuid
 from urllib import request, error
 from typing import Dict, Any, List
 
@@ -244,12 +245,8 @@ def retrieve_passages(query: str, k: int, config: Dict[str, str]) -> List[Dict[s
             }
         },
         'analytics': {
-            'clientId': 'bedrock-agent-tool',
-            'clientTimestamp': '2025-01-01T00:00:00.000Z',
-            'originContext': 'BedrockAgentTool',
-            'actionCause': 'passageRetrieval',
-            'capture': False,
-            'source': ['BedrockAgentTool@1.0.0']
+            'clientId': str(uuid.uuid4()),
+            'capture': False
         }
     }
     

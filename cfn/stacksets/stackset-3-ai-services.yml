@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'StackSet Layer 3: AI Services - Bedrock Agent, AgentCore Runtime, MCP Server'
+Description: 'StackSet Layer 3: AI Services - Bedrock Agent, AgentCore Runtime, Hosted MCP'
 
 Parameters:
   StackPrefix:
@@ -20,6 +20,11 @@ Parameters:
   MasterAccountId:
     Type: String
     Description: Master account ID for ECR cross-account access (passed from deployment script)
+
+  CoveoAgentImageDigest:
+    Type: String
+    Default: latest
+    Description: Current Coveo Agent ECR image digest. Used to force AgentCore runtime refreshes when the latest tag is repushed.
 
 Resources:
   # ==========================================
@@ -88,19 +93,19 @@ Resources:
       Description: 'Bedrock Agent with Coveo Passage Retrieval for Finance Knowledge Hub'
       AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
       FoundationModel: !Ref BedrockFoundationModel
-      # Memory Configuration - Workshop attendees will enable this in the console
-      # Uncomment the following lines to pre-configure memory (attendees still need to enable it):
-      # MemoryConfiguration:
-      #   EnabledMemoryTypes:
-      #     - SESSION_SUMMARY
-      #   StorageDays: 30
+      MemoryConfiguration:
+        EnabledMemoryTypes:
+          - SESSION_SUMMARY
+        StorageDays: 7
+        SessionSummaryConfiguration:
+          MaxRecentSessions: 5
       Instruction: |
         You are the Finance Knowledge Assistant, providing accurate information from authoritative government and educational sources about financial topics.
         
         ## Core Principles
         
         1. **Grounding**: Use ONLY information from the passage retrieval tool for knowledge questions. Never make up information.
-        2. **Memory**: You have access to conversation history within the current session, and potentially across sessions if memory is enabled. Use this to provide contextual responses.
+        2. **Memory**: You have access to conversation history within the current session, and session summaries from previous sessions for the same memory ID after those sessions end or time out. Use this to provide contextual responses.
         3. **Formatting**: Provide clean, well-structured answers in markdown format suitable for HTML display with proper headings, lists, and emphasis.
         4. **Sources**: Always cite sources with titles and URLs from retrieved passages when answering knowledge questions.
         5. **Clarity**: Be concise and direct. Lead with the answer, then provide supporting details.
@@ -119,12 +124,12 @@ Resources:
         
         **Action:** Answer directly from conversation memory WITHOUT calling retrieve_passages.
         
-        **Important:** You can always recall conversations within the current session. If memory is enabled, you can also recall previous sessions. If you don't have memory of a previous session, politely acknowledge this.
+        **Important:** You can always recall conversations within the current session. Previous-session recall is available only after the earlier session has ended or timed out and a summary has been stored. If you don't have memory of a previous session, politely acknowledge this.
         
         **Examples:**
         - "What did we discuss earlier?" → "Earlier in this session, you asked about 401k contribution limits and tax advantages."
         - "Remind me what I asked about" → "You asked about ACH payment systems and how they work for direct deposits."
-        - "What did we talk about last time?" → If memory enabled: "In our previous session, we discussed Roth IRA benefits." If no memory: "I don't have access to our previous conversations, but I'm happy to help with any questions you have now."
+        - "What did we talk about last time?" → If memory is available: "In our previous session, we discussed Roth IRA benefits." If no memory is available yet: "I don't have access to our previous conversations yet, but I'm happy to help with any questions you have now."
         
         ### Type 2: Knowledge Questions (USE retrieve_passages tool)
         
@@ -161,11 +166,11 @@ Resources:
         ## Memory Usage Guidelines
         
         - **Within-session memory**: Always available - remember all exchanges in the current conversation
-        - **Cross-session memory**: Available if enabled - can recall previous sessions with this user
+        - **Cross-session memory**: Available through stored session summaries after the earlier session ends or times out
         - **Reference previous topics**: When appropriate, connect new questions to previous discussions
         - **Personalize**: Adapt your responses based on the user's interests and previous questions
         - **Build on history**: If a user asks a follow-up question, acknowledge the context from previous exchanges
-        - **Graceful handling**: If asked about previous sessions but memory is not available, politely acknowledge this limitation
+        - **Graceful handling**: If asked about previous sessions but memory is not available yet, politely acknowledge this limitation
         
         ## Response Format
         
@@ -275,67 +280,6 @@ Resources:
       Value: !GetAtt AgentAlias.AgentAliasId
 
   # ==========================================
-  # AgentCore Runtime for MCP Server
-  # ==========================================
-  
-  AgentCoreLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/bedrock-agentcore/runtimes/${StackPrefix}_Coveo_MCPServer_Tools'
-      RetentionInDays: 7
-
-  AgentCoreRuntime:
-    Type: AWS::BedrockAgentCore::Runtime
-    Properties:
-      AgentRuntimeName: !Sub "${StackPrefix}_Coveo_MCPServer_Tools"
-      AgentRuntimeArtifact:
-        ContainerConfiguration:
-          ContainerUri: !Sub '${MasterAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${StackPrefix}-coveo-mcp-server-master:latest'
-      EnvironmentVariables:
-        MCP_TRANSPORT: streamable-http
-        MCP_HOST: 0.0.0.0
-        MCP_PORT: '8000'
-        COVEO_PLATFORM_URL: https://platform.cloud.coveo.com
-        PYTHONUNBUFFERED: '1'
-        LOG_LEVEL: DEBUG
-        MCP_NAME: coveo_mcp_server
-        MCP_HTTP_PATH: /mcp
-      RoleArn: 
-        Fn::ImportValue: !Sub '${StackPrefix}-AgentCoreRuntimeRoleArn'
-      NetworkConfiguration:
-        NetworkMode: PUBLIC
-      ProtocolConfiguration: MCP
-      Description: !Sub 'Coveo MCP Server Runtime for ${StackPrefix}'
-
-  AgentCoreRuntimeEndpoint:
-    Type: AWS::BedrockAgentCore::RuntimeEndpoint
-    DependsOn:
-      - AgentCoreRuntime
-    Properties:
-      AgentRuntimeId: !GetAtt AgentCoreRuntime.AgentRuntimeId
-      Name: !Sub '${StackPrefix}_coveo_mcp_endpoint'
-      Description: !Sub 'Public endpoint for ${StackPrefix} Coveo MCP Runtime'
-
-  # Store MCP Runtime ARN in SSM
-  # NOTE: This is the MCP Runtime (workshop_Coveo_MCPServer_Tools)
-  # The Agent Runtime uses this to call MCP tools
-  MCPRuntimeArnParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub '/${StackPrefix}/coveo/mcp-runtime-arn'
-      Description: MCP Runtime ARN for Coveo MCP Server (workshop_Coveo_MCPServer_Tools)
-      Type: String
-      Value: !GetAtt AgentCoreRuntime.AgentRuntimeArn
-
-  MCPRuntimeIdParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub '/${StackPrefix}/coveo/mcp-runtime-id'
-      Description: MCP Runtime ID for Coveo MCP Server
-      Type: String
-      Value: !GetAtt AgentCoreRuntime.AgentRuntimeId
-
-  # ==========================================
   # Bedrock Model Invocation Logging Role
   # ==========================================
   
@@ -366,8 +310,7 @@ Resources:
 
   # ==========================================
   # Coveo Agent Runtime (Orchestrator)
-  # This is separate from MCP Server Runtime
-  # Agent orchestrates MCP tool calls with Bedrock
+  # Agent orchestrates Hosted MCP tool calls with Bedrock
   # ==========================================
   
   AgentExecutionRole:
@@ -404,7 +347,6 @@ Resources:
                   - ecr:BatchCheckLayerAvailability
                 Resource:
                   - !Sub "arn:aws:ecr:${AWS::Region}:${MasterAccountId}:repository/${StackPrefix}-coveo-agent-master"
-                  - !Sub "arn:aws:ecr:${AWS::Region}:${MasterAccountId}:repository/${StackPrefix}-coveo-mcp-server-master"
               - Sid: CloudWatchLogs
                 Effect: Allow
                 Action:
@@ -415,6 +357,9 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock/modelinvocations/*"
                   - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/*:*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock/agentcore/*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock/agentcore/*:*"
               - Sid: BedrockInvoke
                 Effect: Allow
                 Action:
@@ -427,11 +372,6 @@ Resources:
                   - bedrock:PutModelInvocationLoggingConfiguration
                   - bedrock:GetModelInvocationLoggingConfiguration
                 Resource: "*"
-              - Sid: AgentCoreRuntimeInvoke
-                Effect: Allow
-                Action:
-                  - bedrock-agentcore:InvokeAgentRuntime
-                Resource: !GetAtt AgentCoreRuntime.AgentRuntimeArn
               - Sid: WorkloadAccessToken
                 Effect: Allow
                 Action:
@@ -447,6 +387,12 @@ Resources:
               - Sid: MemoryAccess
                 Effect: Allow
                 Action:
+                  - bedrock-agentcore:CreateEvent
+                  - bedrock-agentcore:GetEvent
+                  - bedrock-agentcore:ListActors
+                  - bedrock-agentcore:ListEvents
+                  - bedrock-agentcore:ListSessions
+                  - bedrock-agentcore:RetrieveMemoryRecords
                   - bedrock-agentcore:CreateMemoryRecord
                   - bedrock-agentcore:GetMemoryRecord
                   - bedrock-agentcore:ListMemoryRecords
@@ -484,13 +430,24 @@ Resources:
             Name: "SessionSummarizer"
             Description: "Summarizes conversation sessions for context retention"
             Namespaces:
-              - "/summaries/{actorId}/{sessionId}"
+              - "/summaries/{actorId}/{sessionId}/"
+        - SemanticMemoryStrategy:
+            Name: "FactExtractor"
+            Description: "Extracts factual knowledge from conversations for cross-session recall"
+            Namespaces:
+              - "/users/{actorId}/facts/"
 
   CoveoAgentLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/bedrock/agentcore/${AWS::StackName}'
       RetentionInDays: 7
+
+  CoveoAgentRuntimeLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref CoveoAgentLogGroup
+      LogStreamName: runtime-logs
 
   ModelInvocationLogGroup:
     Type: AWS::Logs::LogGroup
@@ -505,14 +462,17 @@ Resources:
       AgentRuntimeName: !Sub "${StackPrefix}_CoveoAgent"
       AgentRuntimeArtifact:
         ContainerConfiguration:
-          ContainerUri: !Sub '${MasterAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${StackPrefix}-coveo-agent-master:latest'
+          # Use digest instead of :latest to force container refresh on updates
+          ContainerUri: !Sub '${MasterAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${StackPrefix}-coveo-agent-master@${CoveoAgentImageDigest}'
       RoleArn: !GetAtt AgentExecutionRole.Arn
       NetworkConfiguration:
         NetworkMode: PUBLIC
-      Description: "Coveo Agent that orchestrates MCP tool calls with Bedrock"
+      Description: "Coveo Agent that orchestrates Hosted MCP tool calls with Bedrock"
       EnvironmentVariables:
         MEMORY_ID: !GetAtt CoveoAgentMemory.MemoryId
         EXECUTION_ROLE_ARN: !GetAtt AgentExecutionRole.Arn
+        STACK_PREFIX: !Ref StackPrefix
+        COVEO_AGENT_IMAGE_DIGEST: !Ref CoveoAgentImageDigest
         MODEL_INVOCATION_LOG_GROUP: !Ref ModelInvocationLogGroup
         AGENT_RUNTIME_LOG_GROUP: !Ref CoveoAgentLogGroup
         LOG_LEVEL: INFO
@@ -549,12 +509,12 @@ Resources:
   # Store Coveo Agent Runtime ARN in SSM
   # IMPORTANT: This is stored as "runtime-arn" (not "agent-runtime-arn")
   # Lambda reads /${StackPrefix}/coveo/runtime-arn to call the Agent Runtime
-  # This is the AGENT Runtime (workshop_CoveoAgent), NOT the MCP Runtime
+  # This is the AGENT Runtime (workshop_CoveoAgent), not a separate MCP runtime
   CoveoAgentRuntimeArnParameter:
     Type: AWS::SSM::Parameter
     Properties:
       Name: !Sub '/${StackPrefix}/coveo/runtime-arn'
-      Description: Agent Runtime ARN (workshop_CoveoAgent) - Lambda calls this, NOT MCP Runtime
+      Description: Agent Runtime ARN (workshop_CoveoAgent) used by the AgentCore Lambda
       Type: String
       Value: !GetAtt CoveoAgentRuntime.AgentRuntimeArn
 
@@ -593,18 +553,6 @@ Outputs:
     Value: !GetAtt AgentAlias.AgentAliasId
     Export:
       Name: !Sub '${StackPrefix}-bedrock-agent-alias-id'
-
-  MCPServerRuntimeId:
-    Description: ID of the Coveo MCP server runtime
-    Value: !GetAtt AgentCoreRuntime.AgentRuntimeId
-    Export:
-      Name: !Sub '${StackPrefix}-MCPServerRuntimeId'
-
-  MCPServerRuntimeArn:
-    Description: ARN of the Coveo MCP server runtime
-    Value: !GetAtt AgentCoreRuntime.AgentRuntimeArn
-    Export:
-      Name: !Sub '${StackPrefix}-MCPServerRuntimeArn'
 
   CoveoAgentMemoryId:
     Description: "ID of the Coveo Agent Memory"

@@ -5,12 +5,14 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') }); // Load from root directory
 const helmet = require('helmet');
 const compression = require('compression');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
+const DEFAULT_API_TIMEOUT_MS = 30000;
+const AGENT_CHAT_TIMEOUT_MS = 90000;
 
 // Middleware
 app.use(helmet({
@@ -77,7 +79,7 @@ const API_GATEWAY_BASE_URL = process.env.API_GATEWAY_URL;
  * @param {object} headers - Additional headers
  * @returns {Promise<object>} - API response
  */
-async function invokeAPIGateway(endpoint, payload, method = 'POST', headers = {}) {
+async function invokeAPIGateway(endpoint, payload, method = 'POST', headers = {}, timeoutMs = DEFAULT_API_TIMEOUT_MS) {
   try {
     console.log(`🚀 Invoking API Gateway: ${method} ${endpoint}`);
     console.log('📦 Payload:', JSON.stringify(payload, null, 2));
@@ -89,7 +91,7 @@ async function invokeAPIGateway(endpoint, payload, method = 'POST', headers = {}
         'Content-Type': 'application/json',
         ...headers
       },
-      timeout: 30000
+      timeout: timeoutMs
     };
 
     if (method !== 'GET' && payload) {
@@ -225,8 +227,13 @@ app.get('/api/config', (req, res) => {
     },
     coveo: {
       orgId: COVEO_CONFIG.ORG_ID,
+      // Temporary workshop shortcut: the Headless Search Agent runs in the
+      // browser and uses the same workshop API key as the BFF.
+      searchApiKey: COVEO_CONFIG.SEARCH_API_KEY,
+      searchAgentId: process.env.COVEO_SEARCH_AGENT_ID || '',
       searchHub: COVEO_CONFIG.SEARCH_HUB,
-      searchPipeline: COVEO_CONFIG.SEARCH_PIPELINE
+      searchPipeline: COVEO_CONFIG.SEARCH_PIPELINE,
+      environment: process.env.COVEO_ENVIRONMENT || 'prod'
     }
   });
 });
@@ -234,7 +241,7 @@ app.get('/api/config', (req, res) => {
 // ==========================================
 // Health Check Endpoint (No Auth Required)
 // ==========================================
-app.get('/api/health', (req, res) => {
+const healthResponse = (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -252,7 +259,10 @@ app.get('/api/health', (req, res) => {
       }
     }
   });
-});
+};
+
+app.get('/health', healthResponse);
+app.get('/api/health', healthResponse);
 
 // ==========================================
 // API Endpoints (Authentication Required)
@@ -396,7 +406,8 @@ app.post('/api/search', async (req, res) => {
     }
 
     // Invoke API Gateway
-    const response = await invokeAPIGateway(endpoint, payload, 'POST', headers);
+    const timeoutMs = backendMode === 'coveoMCP' ? AGENT_CHAT_TIMEOUT_MS : DEFAULT_API_TIMEOUT_MS;
+    const response = await invokeAPIGateway(endpoint, payload, 'POST', headers, timeoutMs);
 
     console.log('✅ Search completed successfully');
     console.log('📊 Results count:', response.totalCount || response.results?.length || 0);
@@ -457,12 +468,8 @@ app.post('/api/passages', async (req, res) => {
         }
       },
       analytics: {
-        clientId: require('uuid').v4(),
-        clientTimestamp: new Date().toISOString(),
-        originContext: "Passages",
-        actionCause: "passageRetrieval",
-        capture: false,
-        source: ["WikiSearch@1.0.0"]
+        clientId: randomUUID(),
+        capture: false
       },
       backendMode  // Include backendMode for logging/tracking
     };
@@ -582,7 +589,7 @@ app.post('/api/answer', async (req, res) => {
           firstResult: 0,
           tab: "",
           analytics: {
-            clientId: require('uuid').v4(),
+            clientId: randomUUID(),
             clientTimestamp: new Date().toISOString(),
             documentReferrer: "",
             documentLocation: "WikiSearch",
@@ -637,7 +644,7 @@ app.post('/api/answer', async (req, res) => {
             }
           },
           analytics: {
-            clientId: require('uuid').v4(),
+            clientId: randomUUID(),
             clientTimestamp: new Date().toISOString(),
             originContext: "Passages",
             actionCause: "passageRetrieval",
@@ -653,7 +660,7 @@ app.post('/api/answer', async (req, res) => {
         endpoint = '/agentcore';
         payload = {
           query,
-          sessionId: sessionId || uuidv4(),
+          sessionId: sessionId || randomUUID(),
           backendMode: 'coveoMCP',
           conversationType: 'single-turn',  // Answer endpoint is single-turn
           controls: {
@@ -674,7 +681,7 @@ app.post('/api/answer', async (req, res) => {
       default:
         return res.status(400).json({
           error: 'Invalid backend mode',
-          message: `Backend mode '${backendMode}' is not supported. Use 'coveo', 'bedrockAgent', or 'coveoMCP'.`
+          message: `Backend mode '${backendMode}' is not supported for answer generation. Use 'coveo' or 'coveoMCP'.`
         });
     }
 
@@ -768,7 +775,7 @@ app.post('/api/chat', async (req, res) => {
           firstResult: 0,
           tab: "",
           analytics: {
-            clientId: require('uuid').v4(),
+            clientId: randomUUID(),
             clientTimestamp: new Date().toISOString(),
             documentReferrer: "",
             documentLocation: "WikiSearch",
@@ -786,7 +793,7 @@ app.post('/api/chat', async (req, res) => {
         endpoint = '/bedrock-agent-chat';
         payload = {
           query: message,
-          sessionId: sessionId || require('uuid').v4(),
+          sessionId: sessionId || randomUUID(),
           backendMode: 'bedrockAgent',
           conversationType: 'multi-turn', // Indicate this is a multi-turn request
           endSession: endSession,  // Pass endSession flag to finalize and summarize
@@ -824,7 +831,7 @@ app.post('/api/chat', async (req, res) => {
             }
           },
           analytics: {
-            clientId: require('uuid').v4(),
+            clientId: randomUUID(),
             clientTimestamp: new Date().toISOString(),
             originContext: "Passages",
             actionCause: "passageRetrieval",
@@ -840,7 +847,7 @@ app.post('/api/chat', async (req, res) => {
         endpoint = '/agentcore';
         payload = {
           question: message,
-          sessionId: sessionId || require('uuid').v4(),
+          sessionId: sessionId || randomUUID(),
           backendMode,
           conversationType: 'multi-turn',  // Chat endpoint is multi-turn with memory
           endSession: endSession,  // Pass endSession flag to finalize and summarize
@@ -862,7 +869,7 @@ app.post('/api/chat', async (req, res) => {
       default:
         return res.status(400).json({
           error: 'Invalid backend mode',
-          message: `Backend mode '${backendMode}' is not supported. Use 'coveo', 'bedrockAgent', or 'coveoMCP'.`
+          message: `Backend mode '${backendMode}' is not supported for chat. Use 'coveo' or 'coveoMCP'.`
         });
     }
 

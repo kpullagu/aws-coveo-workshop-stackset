@@ -331,7 +331,6 @@ Resources:
                   - ecr:GetDownloadUrlForLayer
                   - ecr:BatchGetImage
                 Resource:
-                  - !Sub 'arn:aws:ecr:${AWS::Region}:${MasterAccountId}:repository/${StackPrefix}-coveo-mcp-server-master'
                   - !Sub 'arn:aws:ecr:${AWS::Region}:${MasterAccountId}:repository/${StackPrefix}-ui-master'
                   - !Sub 'arn:aws:ecr:${AWS::Region}:${MasterAccountId}:repository/${StackPrefix}-coveo-agent-master'
               - Effect: Allow
@@ -565,9 +564,9 @@ Resources:
         Variables:
           STACK_PREFIX: !Ref StackPrefix
           LOG_LEVEL: INFO
-          # IMPORTANT: Lambda calls AGENT Runtime (workshop_CoveoAgent), NOT MCP Runtime
+          # IMPORTANT: Lambda calls the Agent Runtime (workshop_CoveoAgent), not a separate MCP runtime
           # The SSM parameter "runtime-arn" contains the AGENT Runtime ARN
-          # Flow: Lambda → Agent Runtime (runtime-arn) → MCP Runtime (mcp-runtime-arn) → Coveo API
+          # Flow: Lambda → Agent Runtime (runtime-arn) → Coveo Hosted MCP → Coveo APIs
           # Agent Runtime ARN will be seeded after Layer 3 deployment
           # Lambda code reads from SSM: /${StackPrefix}/coveo/runtime-arn (which is Agent Runtime ARN)
           AGENTCORE_RUNTIME_ARN_PARAM: !Sub '/${StackPrefix}/coveo/runtime-arn'

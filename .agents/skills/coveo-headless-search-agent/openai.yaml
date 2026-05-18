@@ -1,0 +1,7 @@
+interface:
+  display_name: "Coveo Headless Search Agent"
+  short_description: "Build Headless generated-answer chat UIs"
+  default_prompt: "Use $coveo-headless-search-agent to implement a Coveo Headless search agent with generated answers, follow-ups, citations, copy, and feedback controls."
+
+policy:
+  allow_implicit_invocation: true

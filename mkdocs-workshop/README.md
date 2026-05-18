@@ -7,7 +7,7 @@ This repository contains the documentation for the Coveo + AWS Bedrock Workshop,
 A hands-on 90-minute workshop exploring three progressive AI integration patterns:
 1. **Lab 1**: Direct Coveo API Integration
 2. **Lab 2**: Bedrock Agent with Coveo Passage Retrieval Tool
-3. **Lab 3**: Bedrock AgentCore with Coveo MCP Server
+3. **Lab 3**: Bedrock AgentCore with Coveo Hosted MCP
 4. **Lab 4**: Multi-Turn Conversations and Use Cases
 
 ## 📚 Documentation Structure
@@ -18,7 +18,7 @@ mkdocs-workshop/
 │   ├── index.md              # Home page
 │   ├── lab1/                 # Lab 1: Coveo Discovery
 │   ├── lab2/                 # Lab 2: Bedrock Agent
-│   ├── lab3/                 # Lab 3: AgentCore + MCP
+│   ├── lab3/                 # Lab 3: AgentCore + Hosted MCP
 │   ├── lab4/                 # Lab 4: Chatbot & Use Cases
 │   ├── resources/            # Additional resources
 │   ├── images/               # Workshop screenshots

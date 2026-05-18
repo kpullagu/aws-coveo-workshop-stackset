@@ -215,8 +215,8 @@ Once you've tested several queries and explored the features:
 
 <div style="text-align: center; margin: 3rem 0;">
   <a href="../../lab2/" class="md-button md-button--primary" style="font-size: 1.1rem; padding: 1rem 2rem;">
-    Proceed to Lab 2: Bedrock Agent Integration →
+    Proceed to Lab 2: AgentCore + Hosted MCP →
   </a>
 </div>
 
-In Lab 2, you'll see how these same queries work with conversational AI and memory!
+In Lab 2, you'll see how these same queries work through AgentCore and Coveo Hosted MCP.

@@ -14,20 +14,26 @@ ASSUME_ROLE_NAME="${ASSUME_ROLE_NAME:-OrganizationAccountAccessRole}"
 log_info "=========================================="
 log_info "Seeding SSM Parameters"
 log_info "=========================================="
-log_info "This will seed Coveo credentials to all accounts"
+log_info "This will seed Coveo API and Hosted MCP configuration to all accounts"
 log_info "MUST run BEFORE Layer 2 deployment!"
 log_info "=========================================="
 
 # Validate Coveo credentials
-if [ -z "$COVEO_ORG_ID" ] || [ -z "$COVEO_SEARCH_API_KEY" ]; then
+if [ -z "$COVEO_ORG_ID" ] || [ -z "$COVEO_SEARCH_API_KEY" ] || [ -z "$COVEO_SEARCH_AGENT_ID" ] || [ -z "$COVEO_HOSTED_MCP_ENDPOINT" ] || [ -z "$COVEO_HOSTED_MCP_API_KEY" ]; then
     log_error "Missing Coveo credentials!"
     log_info "Please set in .env.stacksets:"
     log_info "  COVEO_ORG_ID"
     log_info "  COVEO_SEARCH_API_KEY"
+    log_info "  COVEO_SEARCH_AGENT_ID"
     log_info "  COVEO_PLATFORM_URL"
     log_info "  COVEO_SEARCH_PIPELINE"
     log_info "  COVEO_SEARCH_HUB"
     log_info "  COVEO_ANSWER_CONFIG_ID"
+    log_info "  COVEO_HOSTED_MCP_CONFIG_NAME"
+    log_info "  COVEO_HOSTED_MCP_ENDPOINT"
+    log_info "  COVEO_HOSTED_MCP_AUTH_MODE"
+    log_info "  COVEO_HOSTED_MCP_API_KEY"
+    log_info "  COVEO_HOSTED_MCP_SEARCH_HUB"
     exit 1
 fi
 
@@ -35,14 +41,26 @@ fi
 COVEO_PLATFORM_URL="${COVEO_PLATFORM_URL:-https://platform.cloud.coveo.com}"
 COVEO_SEARCH_PIPELINE="${COVEO_SEARCH_PIPELINE:-aws-workshop-pipeline}"
 COVEO_SEARCH_HUB="${COVEO_SEARCH_HUB:-aws-workshop}"
+COVEO_ENVIRONMENT="${COVEO_ENVIRONMENT:-prod}"
 COVEO_ANSWER_CONFIG_ID="${COVEO_ANSWER_CONFIG_ID:-NOT_CONFIGURED}"
+COVEO_HOSTED_MCP_CONFIG_NAME="${COVEO_HOSTED_MCP_CONFIG_NAME:-Workshop-MCP-server}"
+COVEO_HOSTED_MCP_ENDPOINT="${COVEO_HOSTED_MCP_ENDPOINT:-}"
+COVEO_HOSTED_MCP_AUTH_MODE="${COVEO_HOSTED_MCP_AUTH_MODE:-anonymous_api_key}"
+COVEO_HOSTED_MCP_API_KEY="${COVEO_HOSTED_MCP_API_KEY:-}"
+COVEO_HOSTED_MCP_SEARCH_HUB="${COVEO_HOSTED_MCP_SEARCH_HUB:-MCP_Workshop-MCP-server}"
 
 log_info "Coveo Org ID: $COVEO_ORG_ID"
 log_info "API Key: ${COVEO_SEARCH_API_KEY:0:10}..."
 log_info "Platform URL: $COVEO_PLATFORM_URL"
 log_info "Search Pipeline: $COVEO_SEARCH_PIPELINE"
 log_info "Search Hub: $COVEO_SEARCH_HUB"
+log_info "Search Agent ID: $COVEO_SEARCH_AGENT_ID"
+log_info "Coveo Environment: $COVEO_ENVIRONMENT"
 log_info "Answer Config ID: $COVEO_ANSWER_CONFIG_ID"
+log_info "Hosted MCP Config: $COVEO_HOSTED_MCP_CONFIG_NAME"
+log_info "Hosted MCP Endpoint: $COVEO_HOSTED_MCP_ENDPOINT"
+log_info "Hosted MCP Auth Mode: $COVEO_HOSTED_MCP_AUTH_MODE"
+log_info "Hosted MCP Search Hub: $COVEO_HOSTED_MCP_SEARCH_HUB"
 echo ""
 
 # Function to assume role
@@ -131,6 +149,24 @@ for ACCOUNT_ID in $ACCOUNT_IDS; do
         --overwrite \
         --description "Coveo Search Hub" \
         --region "$AWS_REGION" >/dev/null 2>&1
+
+    log_info "  Creating /${STACK_PREFIX}/coveo/search-agent-id"
+    aws ssm put-parameter \
+        --name "/${STACK_PREFIX}/coveo/search-agent-id" \
+        --value "$COVEO_SEARCH_AGENT_ID" \
+        --type "String" \
+        --overwrite \
+        --description "Coveo Search Agent ID" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+
+    log_info "  Creating /${STACK_PREFIX}/coveo/environment"
+    aws ssm put-parameter \
+        --name "/${STACK_PREFIX}/coveo/environment" \
+        --value "${COVEO_ENVIRONMENT:-prod}" \
+        --type "String" \
+        --overwrite \
+        --description "Coveo platform environment" \
+        --region "$AWS_REGION" >/dev/null 2>&1
     
     if [ -n "$COVEO_ANSWER_CONFIG_ID" ] && [ "$COVEO_ANSWER_CONFIG_ID" != "NOT_CONFIGURED" ]; then
         log_info "  Creating /${STACK_PREFIX}/coveo/answer-config-id"
@@ -142,6 +178,51 @@ for ACCOUNT_ID in $ACCOUNT_IDS; do
             --description "Coveo Answer API configuration ID" \
             --region "$AWS_REGION" >/dev/null 2>&1
     fi
+
+    log_info "  Creating /${STACK_PREFIX}/coveo/hosted-mcp-config-name"
+    aws ssm put-parameter \
+        --name "/${STACK_PREFIX}/coveo/hosted-mcp-config-name" \
+        --value "$COVEO_HOSTED_MCP_CONFIG_NAME" \
+        --type "String" \
+        --overwrite \
+        --description "Coveo Hosted MCP configuration name" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+
+    log_info "  Creating /${STACK_PREFIX}/coveo/hosted-mcp-endpoint"
+    aws ssm put-parameter \
+        --name "/${STACK_PREFIX}/coveo/hosted-mcp-endpoint" \
+        --value "$COVEO_HOSTED_MCP_ENDPOINT" \
+        --type "String" \
+        --overwrite \
+        --description "Coveo Hosted MCP endpoint URL" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+
+    log_info "  Creating /${STACK_PREFIX}/coveo/hosted-mcp-auth-mode"
+    aws ssm put-parameter \
+        --name "/${STACK_PREFIX}/coveo/hosted-mcp-auth-mode" \
+        --value "$COVEO_HOSTED_MCP_AUTH_MODE" \
+        --type "String" \
+        --overwrite \
+        --description "Coveo Hosted MCP authentication mode" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+
+    log_info "  Creating /${STACK_PREFIX}/coveo/hosted-mcp-api-key"
+    aws ssm put-parameter \
+        --name "/${STACK_PREFIX}/coveo/hosted-mcp-api-key" \
+        --value "$COVEO_HOSTED_MCP_API_KEY" \
+        --type "SecureString" \
+        --overwrite \
+        --description "Coveo Hosted MCP anonymous API key" \
+        --region "$AWS_REGION" >/dev/null 2>&1
+
+    log_info "  Creating /${STACK_PREFIX}/coveo/hosted-mcp-search-hub"
+    aws ssm put-parameter \
+        --name "/${STACK_PREFIX}/coveo/hosted-mcp-search-hub" \
+        --value "$COVEO_HOSTED_MCP_SEARCH_HUB" \
+        --type "String" \
+        --overwrite \
+        --description "Coveo Hosted MCP search hub" \
+        --region "$AWS_REGION" >/dev/null 2>&1
     
     log_success "Account $ACCOUNT_ID: SSM parameters seeded"
     SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
@@ -162,7 +243,14 @@ log_info "  - /${STACK_PREFIX}/coveo/search-api-key"
 log_info "  - /${STACK_PREFIX}/coveo/platform-url"
 log_info "  - /${STACK_PREFIX}/coveo/search-pipeline"
 log_info "  - /${STACK_PREFIX}/coveo/search-hub"
+log_info "  - /${STACK_PREFIX}/coveo/search-agent-id"
+log_info "  - /${STACK_PREFIX}/coveo/environment"
 log_info "  - /${STACK_PREFIX}/coveo/answer-config-id"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-config-name"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-endpoint"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-auth-mode"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-api-key"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-search-hub"
 log_info ""
 log_info "Note: Layer 2 will create additional parameters:"
 log_info "  - /${STACK_PREFIX}/coveo/user-pool-id"

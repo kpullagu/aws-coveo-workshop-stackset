@@ -1,49 +1,185 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'StackSet Layer 4: UI - App Runner Service'
+Description: 'StackSet Layer 4: UI - ECS Express Service'
 
 Parameters:
   StackPrefix:
     Type: String
     Default: workshop
     Description: Prefix for all resources
-  
+
   Environment:
     Type: String
     Default: workshop
     Description: Environment name
-  
+
   MasterAccountId:
     Type: String
     Description: Master account ID for ECR cross-account access (passed from deployment script)
 
+  UiCpu:
+    Type: String
+    Default: '1024'
+    Description: CPU units for the ECS Express service
+
+  UiMemory:
+    Type: String
+    Default: '2048'
+    Description: Memory (MiB) for the ECS Express service
+
+  UiContainerPort:
+    Type: Number
+    Default: 3003
+    Description: Container port exposed by the UI service
+
+  UiHealthCheckPath:
+    Type: String
+    Default: /health
+    Description: Health check path for the UI service
+
+  UiImageTag:
+    Type: String
+    Default: latest
+    Description: UI container image tag in the master ECR repository
+
+  UiImageDigest:
+    Type: String
+    Default: latest
+    Description: Current UI ECR image digest. Used to force ECS Express service refreshes when the latest tag is repushed.
+
 Resources:
-  # ==========================================
-  # IAM Role for App Runner Instance
-  # ==========================================
-  
-  AppRunnerInstanceRole:
+  UIVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.40.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui-vpc'
+        - Key: Environment
+          Value: !Ref Environment
+
+  UIInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui-igw'
+        - Key: Environment
+          Value: !Ref Environment
+
+  UIVpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref UIVpc
+      InternetGatewayId: !Ref UIInternetGateway
+
+  UIPublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref UIVpc
+      CidrBlock: 10.40.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui-public-a'
+        - Key: Environment
+          Value: !Ref Environment
+
+  UIPublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref UIVpc
+      CidrBlock: 10.40.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui-public-b'
+        - Key: Environment
+          Value: !Ref Environment
+
+  UIPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref UIVpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui-public-rt'
+        - Key: Environment
+          Value: !Ref Environment
+
+  UIPublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: UIVpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref UIPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref UIInternetGateway
+
+  UIPublicSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref UIPublicRouteTable
+      SubnetId: !Ref UIPublicSubnetA
+
+  UIPublicSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref UIPublicRouteTable
+      SubnetId: !Ref UIPublicSubnetB
+
+  UIAccessSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access path for the ECS Express UI service
+      VpcId: !Ref UIVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui-access-sg'
+        - Key: Environment
+          Value: !Ref Environment
+
+  UICluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${StackPrefix}-ui'
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackPrefix}-ui'
+        - Key: Environment
+          Value: !Ref Environment
+
+  UIExpressLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ecs/${StackPrefix}-ui'
+      RetentionInDays: 7
+
+  UIExecutionRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub '${StackPrefix}-ui-execution-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              Service: tasks.apprunner.amazonaws.com
+              Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       Policies:
-        - PolicyName: LambdaInvokePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                  - lambda:InvokeAsync
-                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackPrefix}-*'
-        - PolicyName: SSMParameterPolicy
+        - PolicyName: SSMParameterAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -53,156 +189,130 @@ Resources:
                   - ssm:GetParameters
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${StackPrefix}/*'
 
-  # ==========================================
-  # IAM Role for App Runner Access (ECR)
-  # ==========================================
-  
-  AppRunnerAccessRole:
+  UIInfrastructureRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub '${StackPrefix}-ui-infrastructure-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAccessToECSForInfrastructureManagement
+            Effect: Allow
+            Principal:
+              Service: ecs.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSInfrastructureRoleforExpressGatewayServices
+
+  UITaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${StackPrefix}-ui-task-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              Service: build.apprunner.amazonaws.com
+              Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
-      Policies:
-        - PolicyName: CrossAccountECRAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Sid: ECRTokenAccess
-                Effect: Allow
-                Action:
-                  - ecr:GetAuthorizationToken
-                Resource: '*'
-              - Sid: ECRImageAccess
-                Effect: Allow
-                Action:
-                  - ecr:BatchGetImage
-                  - ecr:GetDownloadUrlForLayer
-                  - ecr:BatchCheckLayerAvailability
-                  - ecr:DescribeImages
-                Resource:
-                  - !Sub 'arn:aws:ecr:${AWS::Region}:${MasterAccountId}:repository/${StackPrefix}-ui-master'
 
-  # ==========================================
-  # App Runner Service
-  # ==========================================
-  
-  AppRunnerService:
-    Type: AWS::AppRunner::Service
+  UIExpressService:
+    Type: AWS::ECS::ExpressGatewayService
     Properties:
       ServiceName: !Sub '${StackPrefix}-ui'
-      SourceConfiguration:
-        AuthenticationConfiguration:
-          AccessRoleArn: !GetAtt AppRunnerAccessRole.Arn
-        ImageRepository:
-          ImageIdentifier: !Sub '${MasterAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${StackPrefix}-ui-master:latest'
-          ImageRepositoryType: ECR
-          ImageConfiguration:
-            Port: '3003'
-            RuntimeEnvironmentVariables:
-              - Name: NODE_ENV
-                Value: production
-              - Name: PORT
-                Value: '3003'
-              - Name: AWS_REGION
-                Value: !Ref AWS::Region
-              - Name: STACK_PREFIX
-                Value: !Ref StackPrefix
-              # Cognito Configuration
-              - Name: COGNITO_USER_POOL_ID
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/user-pool-id}}'
-              - Name: COGNITO_CLIENT_ID
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/client-id}}'
-              - Name: COGNITO_REGION
-                Value: !Ref AWS::Region
-              - Name: COGNITO_DOMAIN
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/cognito-domain}}'
-              # Coveo Configuration
-              - Name: COVEO_ORG_ID
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/org-id}}'
-              - Name: COVEO_SEARCH_API_KEY
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/search-api-key}}'
-              - Name: COVEO_PLATFORM_URL
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/platform-url}}'
-              - Name: COVEO_SEARCH_PIPELINE
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/search-pipeline}}'
-              - Name: COVEO_SEARCH_HUB
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/search-hub}}'
-              - Name: COVEO_ANSWER_CONFIG_ID
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/answer-config-id}}'
-              - Name: COVEO_RESULTS_PER_PAGE
-                Value: '20'
-              # API Gateway URL
-              - Name: API_GATEWAY_URL
-                Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/api-gateway-url}}'
-      InstanceConfiguration:
-        Cpu: '1024'
-        Memory: '2048'
-        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
-      HealthCheckConfiguration:
-        Protocol: HTTP
-        Path: /health
-        Interval: 10
-        Timeout: 5
-        HealthyThreshold: 1
-        UnhealthyThreshold: 5
-      AutoScalingConfigurationArn: !GetAtt AppRunnerAutoScaling.AutoScalingConfigurationArn
+      Cluster: !Ref UICluster
+      Cpu: !Ref UiCpu
+      Memory: !Ref UiMemory
+      ExecutionRoleArn: !GetAtt UIExecutionRole.Arn
+      InfrastructureRoleArn: !GetAtt UIInfrastructureRole.Arn
+      TaskRoleArn: !GetAtt UITaskRole.Arn
+      HealthCheckPath: !Ref UiHealthCheckPath
+      NetworkConfiguration:
+        Subnets:
+          - !Ref UIPublicSubnetA
+          - !Ref UIPublicSubnetB
+        SecurityGroups:
+          - !Ref UIAccessSecurityGroup
+      ScalingTarget:
+        AutoScalingMetric: AVERAGE_CPU
+        AutoScalingTargetValue: 60
+        MinTaskCount: 1
+        MaxTaskCount: 10
+      PrimaryContainer:
+        Image: !Sub '${MasterAccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${StackPrefix}-ui-master:${UiImageTag}'
+        ContainerPort: !Ref UiContainerPort
+        AwsLogsConfiguration:
+          LogGroup: !Ref UIExpressLogGroup
+          LogStreamPrefix: ecs
+        Environment:
+          - Name: NODE_ENV
+            Value: production
+          - Name: PORT
+            Value: !Sub '${UiContainerPort}'
+          - Name: AWS_REGION
+            Value: !Ref AWS::Region
+          - Name: STACK_PREFIX
+            Value: !Ref StackPrefix
+          - Name: UI_IMAGE_DIGEST
+            Value: !Ref UiImageDigest
+          - Name: COGNITO_USER_POOL_ID
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/user-pool-id}}'
+          - Name: COGNITO_CLIENT_ID
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/client-id}}'
+          - Name: COGNITO_REGION
+            Value: !Ref AWS::Region
+          - Name: COGNITO_DOMAIN
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/cognito-domain}}'
+          - Name: COVEO_ORG_ID
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/org-id}}'
+          - Name: COVEO_PLATFORM_URL
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/platform-url}}'
+          - Name: COVEO_SEARCH_PIPELINE
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/search-pipeline}}'
+          - Name: COVEO_SEARCH_HUB
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/search-hub}}'
+          - Name: COVEO_SEARCH_AGENT_ID
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/search-agent-id}}'
+          - Name: COVEO_ENVIRONMENT
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/environment}}'
+          - Name: COVEO_ANSWER_CONFIG_ID
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/answer-config-id}}'
+          - Name: COVEO_RESULTS_PER_PAGE
+            Value: '20'
+          - Name: API_GATEWAY_URL
+            Value: !Sub '{{resolve:ssm:/${StackPrefix}/coveo/api-gateway-url}}'
+        Secrets:
+          - Name: COVEO_SEARCH_API_KEY
+            ValueFrom: !Sub '/${StackPrefix}/coveo/search-api-key'
       Tags:
         - Key: Name
           Value: !Sub '${StackPrefix}-ui'
         - Key: Environment
           Value: !Ref Environment
 
-  # ==========================================
-  # App Runner Auto Scaling
-  # ==========================================
-  
-  AppRunnerAutoScaling:
-    Type: AWS::AppRunner::AutoScalingConfiguration
-    Properties:
-      AutoScalingConfigurationName: !Sub '${StackPrefix}-ui-autoscaling'
-      MaxConcurrency: 100
-      MaxSize: 10
-      MinSize: 1
-      Tags:
-        - Key: Name
-          Value: !Sub '${StackPrefix}-ui-autoscaling'
-        - Key: Environment
-          Value: !Ref Environment
-
-  # ==========================================
-  # SSM Parameter for App Runner URL
-  # ==========================================
-  
-  AppRunnerUrlParameter:
+  UIUrlParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub '/${StackPrefix}/coveo/app-runner-url'
+      Name: !Sub '/${StackPrefix}/coveo/ui-url'
       Type: String
-      Value: !GetAtt AppRunnerService.ServiceUrl
-      Description: App Runner service URL
+      Value: !GetAtt UIExpressService.Endpoint
+      Description: ECS Express service endpoint for the workshop UI
 
 Outputs:
   ServiceUrl:
-    Description: App Runner service URL
-    Value: !GetAtt AppRunnerService.ServiceUrl
+    Description: ECS Express service endpoint
+    Value: !GetAtt UIExpressService.Endpoint
     Export:
-      Name: !Sub '${StackPrefix}-AppRunnerUrl'
-  
+      Name: !Sub '${StackPrefix}-UIServiceUrl'
+
   ServiceArn:
-    Description: App Runner service ARN
-    Value: !GetAtt AppRunnerService.ServiceArn
+    Description: ECS Express service ARN
+    Value: !GetAtt UIExpressService.ServiceArn
     Export:
-      Name: !Sub '${StackPrefix}-AppRunnerArn'
-  
-  ServiceId:
-    Description: App Runner service ID
-    Value: !GetAtt AppRunnerService.ServiceId
+      Name: !Sub '${StackPrefix}-UIServiceArn'
+
+  ClusterArn:
+    Description: ECS cluster ARN hosting the UI service
+    Value: !GetAtt UICluster.Arn
     Export:
-      Name: !Sub '${StackPrefix}-AppRunnerId'
+      Name: !Sub '${StackPrefix}-UIClusterArn'

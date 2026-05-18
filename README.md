@@ -35,7 +35,7 @@ This workshop deploys a complete AI-powered search solution across multiple AWS 
 - **Multi-Account Architecture** - Deploy to 10+ AWS accounts simultaneously
 - **AWS Organizations Integration** - Automatic account discovery and deployment
 - **Bedrock AgentCore Runtime** - Serverless AI agent execution with streaming
-- **MCP Server Integration** - Model Context Protocol for tool orchestration
+- **Hosted MCP Integration** - Model Context Protocol for tool orchestration without a customer-hosted MCP server
 - **Coveo Search Platform** - Enterprise search with AI-powered relevance
 - **Full Observability** - X-Ray tracing, CloudWatch Logs, session correlation
 - **Production-Ready** - Security, monitoring, and operational best practices
@@ -59,7 +59,7 @@ This workshop deploys a complete AI-powered search solution across multiple AWS 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      Master/Management Account                      │
-│  • ECR Repositories (MCP Server, Agent, UI images)                  │
+│  • ECR Repositories (Agent and UI images)                           │
 │  • S3 Bucket (Lambda packages, CloudFormation templates)            │
 │  • Lambda Layer (shared dependencies)                               │
 │  • StackSet Management (deployment orchestration)                   │
@@ -87,14 +87,14 @@ This workshop deploys a complete AI-powered search solution across multiple AWS 
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │ Layer 3: AI Services                                         │   │
-│  │  • Bedrock AgentCore MCP Runtime                             │   │
+│  │  • Bedrock Agent                                             │   │
 │  │  • Bedrock AgentCore Agent Runtime                           │   │
-│  │  • SSM Parameters (configuration)                            │   │
+│  │  • AgentCore Memory + Hosted MCP configuration               │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │ Layer 4: UI                                                  │   │
-│  │  • App Runner Service (React UI + Express BFF)               │   │
+│  │  • ECS Express Service (React UI + Express BFF)              │   │
 │  │  • CloudWatch Logs (application logs)                        │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
@@ -105,7 +105,7 @@ This workshop deploys a complete AI-powered search solution across multiple AWS 
 ```
 1. Master Account Setup
    ├─ Create ECR repositories
-   ├─ Build Docker images (MCP Server, Agent, UI)
+   ├─ Build Docker images (Agent and UI)
    ├─ Create Lambda Layer
    └─ Package Lambda functions
 
@@ -122,13 +122,13 @@ This workshop deploys a complete AI-powered search solution across multiple AWS 
    └─ Configure IAM roles
 
 4. Layer 3 Deployment (AI Services)
-   ├─ Deploy AgentCore MCP Runtime
-   ├─ Deploy AgentCore Agent Runtime
+   ├─ Deploy Bedrock Agent and AgentCore Runtime
+   ├─ Connect AgentCore Runtime to Coveo Hosted MCP
    ├─ Seed SSM parameters
    └─ Enable Bedrock logging
 
 5. Layer 4 Deployment (UI)
-   ├─ Deploy App Runner services
+   ├─ Deploy ECS Express services
    ├─ Configure Cognito callbacks
    └─ Enable X-Ray tracing
 
@@ -148,7 +148,7 @@ The documentation includes:
 - 🏠 **Home** - Workshop overview and prerequisites
 - 🔍 **Lab 1** - Direct Coveo API Integration
 - 🤖 **Lab 2** - Bedrock Agent with Coveo Passage Retrieval Tool
-- ⚡ **Lab 3** - Bedrock AgentCore with Coveo MCP Server
+- ⚡ **Lab 3** - Bedrock AgentCore with Coveo Hosted MCP
 - 💬 **Lab 4** - Multi-Turn Conversations and Use Cases
 - 📖 **Resources** - Architecture diagrams, code references, and additional reading
 
@@ -298,7 +298,7 @@ bash scripts/stacksets/deploy-all-stacksets.sh
 - ✅ Layer 1 to 10+ accounts (S3, ECR, IAM)
 - ✅ Layer 2 to 10+ accounts (Lambda, API Gateway, Cognito)
 - ✅ Layer 3 to 10+ accounts (AgentCore Runtimes)
-- ✅ Layer 4 to 10+ accounts (App Runner UI)
+- ✅ Layer 4 to 10+ accounts (ECS Express UI)
 - ✅ Observability (X-Ray, CloudWatch, Bedrock logging)
 - ✅ Post-deployment configuration
 
@@ -314,7 +314,7 @@ DEPLOYMENT COMPLETE!
 Deployment Information:
   Account: 123456789012
   Region: us-east-1
-  UI URL: https://xxxxx.us-east-1.awsapprunner.com
+  UI URL: https://<ecs-express-endpoint>
   API URL: https://xxxxx.execute-api.us-east-1.amazonaws.com
 
 Test Credentials:
@@ -338,8 +338,8 @@ aws-coveo-workshop/
 │   └── 📁 stacksets/                          # StackSet Templates
 │       ├── stackset-1-prerequisites.yml       # Layer 1: S3, ECR, IAM
 │       ├── stackset-2-core.yml                # Layer 2: Lambda, API Gateway
-│       ├── stackset-3-ai-services.yml         # Layer 3: AgentCore Runtimes
-│       └── stackset-4-ui.yml                  # Layer 4: App Runner UI
+│       ├── stackset-3-ai-services.yml         # Layer 3: Bedrock + AgentCore + Hosted MCP
+│       └── stackset-4-ui.yml                  # Layer 4: ECS Express UI
 │
 ├── 📁 scripts/stacksets/                      # Deployment Scripts
 │   ├── config.sh                              # Configuration loader
@@ -347,7 +347,6 @@ aws-coveo-workshop/
 │   ├── destroy-all-stacksets-v2.sh           # Complete cleanup
 │   │
 │   ├── 01-setup-master-ecr.sh                # Setup master ECR
-│   ├── 02-build-push-mcp-image.sh            # Build MCP Server image
 │   ├── 02b-build-push-agent-image.sh         # Build Agent image
 │   ├── 03-build-push-ui-image.sh             # Build UI image
 │   ├── 04-create-shared-lambda-layer.sh      # Create Lambda Layer
@@ -373,17 +372,8 @@ aws-coveo-workshop/
 │
 ├── 📁 coveo-agent/                            # AgentCore Agent
 │   ├── app.py                                 # Main agent application
-│   ├── mcp_adapter.py                         # MCP client adapter
-│   ├── sigv4_transport.py                     # AWS SigV4 auth
-│   ├── agent-template.yaml                    # AgentCore deployment config
+│   ├── mcp_adapter.py                         # Hosted MCP client adapter
 │   ├── Dockerfile                             # Agent container
-│   └── requirements.txt                       # Python dependencies
-│
-├── 📁 coveo-mcp-server/                       # MCP Server
-│   ├── mcp_server.py                          # MCP server application
-│   ├── coveo_api.py                           # Coveo API integration
-│   ├── mcp-server-template.yaml               # CloudFormation template
-│   ├── Dockerfile                             # MCP container
 │   └── requirements.txt                       # Python dependencies
 │
 ├── 📁 frontend/                               # React UI + Express BFF
@@ -431,8 +421,7 @@ aws-coveo-workshop/
 |-----------|---------|
 | `cfn/stacksets/` | CloudFormation StackSet templates for multi-account deployment |
 | `scripts/stacksets/` | Bash scripts for deployment, configuration, and cleanup |
-| `coveo-agent/` | Bedrock AgentCore Agent application (Python) |
-| `coveo-mcp-server/` | MCP Server for tool orchestration (Python) |
+| `coveo-agent/` | Bedrock AgentCore runtime application with Hosted MCP integration |
 | `frontend/` | React UI with Express BFF (Node.js) |
 | `lambdas/` | AWS Lambda functions (Python) |
 | `docs/` | Comprehensive documentation |
@@ -457,14 +446,11 @@ bash scripts/stacksets/deploy-all-stacksets.sh
 # Creates ECR repositories in master account
 bash scripts/stacksets/01-setup-master-ecr.sh
 ```
-- Creates ECR repositories for MCP Server, Agent, and UI
+- Creates ECR repositories for Agent and UI images
 - Sets up repository policies for cross-account access
 
 **Step 2: Build Docker Images** (10 minutes)
 ```bash
-# Build and push MCP Server image
-bash scripts/stacksets/02-build-push-mcp-image.sh
-
 # Build and push Agent image
 bash scripts/stacksets/02b-build-push-agent-image.sh
 
@@ -550,7 +536,7 @@ bash scripts/stacksets/enable-bedrock-model-invocation-logging.sh
 ```bash
 bash scripts/stacksets/13-deploy-layer4-ui.sh
 ```
-- Deploys App Runner services
+- Deploys ECS Express services
 - Configures auto-scaling
 - Sets up CloudWatch Logs
 
@@ -619,13 +605,13 @@ bash scripts/stacksets/destroy-all-stacksets-v2.sh
 
 The cleanup script removes resources in reverse order of deployment:
 
-#### 1. **Layer 4: UI (App Runner)**
-   - App Runner services
+#### 1. **Layer 4: UI (ECS Express)**
+   - ECS Express services
    - CloudWatch Log groups
    - IAM roles
 
 #### 2. **Layer 3: AI Services**
-   - Bedrock AgentCore Runtimes (Agent and MCP Server)
+   - Bedrock AgentCore runtime and AgentCore memory
    - SSM Parameters
    - CloudWatch Log groups
    - IAM roles
@@ -644,7 +630,7 @@ The cleanup script removes resources in reverse order of deployment:
    - Replication configurations
 
 #### 5. **Master Account Resources**
-   - ECR Repositories (MCP Server, Agent, UI images)
+   - ECR Repositories (Agent and UI images)
    - S3 Bucket (Lambda packages, templates)
    - Lambda Layer
    - StackSet instances and stacks
@@ -723,7 +709,6 @@ aws s3 rm s3://workshop-master-artifacts-${MASTER_ACCOUNT_ID} --recursive
 aws s3 rb s3://workshop-master-artifacts-${MASTER_ACCOUNT_ID}
 
 # Delete ECR repositories
-aws ecr delete-repository --repository-name workshop-coveo-mcp-server --force
 aws ecr delete-repository --repository-name workshop-coveo-agent --force
 aws ecr delete-repository --repository-name workshop-ui --force
 

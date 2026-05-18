@@ -21,7 +21,7 @@ In this lab, you'll explore the **Direct API Integration** pattern:
 ```mermaid
 graph TB
     subgraph "User Interface"
-        UI[Search UI<br/>React Application<br/>App Runner]
+        UI[Search UI<br/>React Application<br/>ECS Express]
     end
     
     subgraph "AWS Infrastructure"
@@ -35,7 +35,7 @@ graph TB
         SEARCH[Search API<br/>Relevance + Results]
         PASSAGES[Passages API<br/>Semantic Retrieval]
         ANSWER[Answer API<br/>Generative AI]
-        INDEX[Knowledge Index<br/>14 Sources]
+        INDEX[Knowledge Index<br/>12 Sources]
     end
     
     UI --> API
@@ -93,7 +93,7 @@ Your instructor will demonstrate the Coveo platform setup. Follow along and take
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 1.5rem 0;">
   <div style="padding: 1rem; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
     <strong>📚 Sources</strong><br/>
-    <small>14 authoritative knowledge sources</small>
+    <small>12 authoritative knowledge sources</small>
   </div>
   <div style="padding: 1rem; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
     <strong>🔍 Index</strong><br/>
@@ -121,6 +121,7 @@ Your instructor will demonstrate the Coveo platform setup. Follow along and take
     - **OCC** - Banking regulation
     - **MyMoney.gov** - Financial literacy
     - **FTC** - Trade commission
+    - **SEC Data** - Securities filings and disclosures
 
 **Coveo Console - Sources Overview**
 
@@ -136,7 +137,7 @@ Your instructor will demonstrate the Coveo platform setup. Follow along and take
 
 **Type**: Hands-on
 
-1. **Open the App Runner URL** provided by your instructor
+1. **Open the workshop UI URL** provided by your instructor
 2. **Login** using the provided username and password for the UI (not AWS credentials!)
 
 **Workshop UI - Login Page**
@@ -180,7 +181,7 @@ Test the Coveo Direct API integration with sample queries and explore all result
 
 1. **Look at the backend selector** (top right)
 2. **Ensure "Coveo" is selected**
-3. **Note the three options**: Coveo, Bedrock Agent, Coveo MCP Server Agent
+3. **Note the three options**: Coveo, Coveo Hosted MCP Agent, Coveo Search Agent
 
 **Workshop UI - Backend Mode Selector with Coveo Selected**
 
@@ -396,10 +397,10 @@ capital gain and dividend reinvestment strategy
 
 ### When NOT to Use Direct Integration
 
-❌ **Multi-turn conversations**: Use Bedrock Agent (Lab 2) or AgentCore (Lab 3) for conversational AI  
-❌ **Complex tool orchestration**: Use AgentCore with MCP (Lab 3) for multi-tool workflows  
-❌ **Cross-session memory**: Use Bedrock Agent or AgentCore with external memory  
-❌ **Agent reasoning**: Use Bedrock Agent or AgentCore for AI-driven decision making
+- **Agent-orchestrated conversations**: Use AgentCore + Coveo Hosted MCP (Lab 2)
+- **Complex tool orchestration**: Use AgentCore + Coveo Hosted MCP (Lab 2)
+- **Cross-session memory**: Use AgentCore memory in the Hosted MCP chatbot path
+- **Native Coveo follow-ups**: Use Coveo Search Agent with Headless (Lab 3)
 
 ---
 
@@ -427,8 +428,8 @@ Ready to add conversational AI capabilities to your search experience?
 
 <div style="text-align: center; margin: 3rem 0;">
   <a href="../lab2/" class="md-button md-button--primary" style="font-size: 1.1rem; padding: 1rem 2rem;">
-    Proceed to Lab 2: Bedrock Agent Integration →
+    Proceed to Lab 2: AgentCore + Hosted MCP →
   </a>
 </div>
 
-In Lab 2, you'll learn how to integrate Coveo with AWS Bedrock Agent for natural language conversations and multi-turn interactions.
+In Lab 2, you'll use AgentCore with Coveo Hosted MCP for a memory-enabled chatbot experience.

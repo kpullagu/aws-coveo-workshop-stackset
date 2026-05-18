@@ -16,13 +16,23 @@ log_info "Seeding Agent SSM Parameters"
 log_info "=========================================="
 log_info "Layer 3 CloudFormation already created:"
 log_info "  - /${STACK_PREFIX}/coveo/runtime-arn (Agent Runtime ARN)"
-log_info "  - /${STACK_PREFIX}/coveo/mcp-runtime-arn (MCP Runtime ARN)"
 log_info ""
 log_info "This script creates additional parameters needed by Agent:"
 log_info "  - /${STACK_PREFIX}/aws-region"
 log_info "  - /${STACK_PREFIX}/coveo/bedrock-model-id"
-log_info "  - /${STACK_PREFIX}/coveo/mcp-url (constructed from mcp-runtime-arn)"
+log_info "This script also verifies the Hosted MCP parameters seeded earlier by 07-seed-ssm-parameters.sh"
 log_info "=========================================="
+
+if [ -z "$COVEO_HOSTED_MCP_CONFIG_NAME" ] || [ -z "$COVEO_HOSTED_MCP_ENDPOINT" ] || [ -z "$COVEO_HOSTED_MCP_AUTH_MODE" ] || [ -z "$COVEO_HOSTED_MCP_API_KEY" ] || [ -z "$COVEO_HOSTED_MCP_SEARCH_HUB" ]; then
+    log_error "Missing Hosted MCP configuration in .env.stacksets"
+    log_info "Required values:"
+    log_info "  COVEO_HOSTED_MCP_CONFIG_NAME"
+    log_info "  COVEO_HOSTED_MCP_ENDPOINT"
+    log_info "  COVEO_HOSTED_MCP_AUTH_MODE"
+    log_info "  COVEO_HOSTED_MCP_API_KEY"
+    log_info "  COVEO_HOSTED_MCP_SEARCH_HUB"
+    exit 1
+fi
 
 # Function to assume role
 assume_role() {
@@ -65,46 +75,7 @@ for ACCOUNT_ID in $ACCOUNT_IDS; do
     export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | awk '{print $2}')
     export AWS_SESSION_TOKEN=$(echo "$CREDS" | awk '{print $3}')
     
-    # Find Layer 3 AI services stack
-    AI_STACK=$(aws cloudformation list-stacks \
-        --region "$AWS_REGION" \
-        --query "StackSummaries[?contains(StackName, 'StackSet-${STACK_PREFIX}-layer3-ai-services') && StackStatus!='DELETE_COMPLETE'].StackName | [0]" \
-        --output json 2>/dev/null | jq -r '.' || echo "")
-    
-    if [ -z "$AI_STACK" ] || [ "$AI_STACK" == "null" ]; then
-        log_warning "No Layer 3 stack found, skipping"
-        unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-        COUNTER=$((COUNTER + 1))
-        continue
-    fi
-    
-    log_info "  Found AI stack: $AI_STACK"
-    
-    # Get MCP Runtime ARN from SSM (created by Layer 3 CloudFormation)
-    MCP_RUNTIME_ARN=$(aws ssm get-parameter \
-        --name "/${STACK_PREFIX}/coveo/mcp-runtime-arn" \
-        --region "$AWS_REGION" \
-        --query 'Parameter.Value' \
-        --output text 2>/dev/null || echo "")
-    
-    if [ -z "$MCP_RUNTIME_ARN" ] || [ "$MCP_RUNTIME_ARN" == "None" ]; then
-        log_error "  Could not find MCP Runtime ARN in SSM (should be created by Layer 3 CFN)"
-        unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-        COUNTER=$((COUNTER + 1))
-        continue
-    fi
-    
-    log_info "  MCP Runtime ARN: $MCP_RUNTIME_ARN"
-    
-    # Construct MCP URL from runtime ARN
-    # Format: https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{encoded-arn}/invocations?qualifier=DEFAULT
-    # URL encode the ARN
-    ENCODED_ARN=$(echo -n "$MCP_RUNTIME_ARN" | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=''))")
-    MCP_URL="https://bedrock-agentcore.${AWS_REGION}.amazonaws.com/runtimes/${ENCODED_ARN}/invocations?qualifier=DEFAULT"
-    
-    log_info "  MCP URL: $MCP_URL"
-    
-    # Create additional Agent SSM parameters (runtime-arn and mcp-runtime-arn already created by CFN)
+    # Create additional Agent SSM parameters (runtime-arn already created by CFN)
     log_info "  Creating /${STACK_PREFIX}/aws-region"
     aws ssm put-parameter \
         --name "/${STACK_PREFIX}/aws-region" \
@@ -123,14 +94,23 @@ for ACCOUNT_ID in $ACCOUNT_IDS; do
         --description "Bedrock model ID for the Agent" \
         --region "$AWS_REGION" >/dev/null 2>&1
     
-    log_info "  Creating /${STACK_PREFIX}/coveo/mcp-url"
-    aws ssm put-parameter \
-        --name "/${STACK_PREFIX}/coveo/mcp-url" \
-        --value "$MCP_URL" \
-        --type "String" \
-        --overwrite \
-        --description "MCP Runtime invocation URL (constructed from mcp-runtime-arn)" \
-        --region "$AWS_REGION" >/dev/null 2>&1
+    log_info "  Validating Hosted MCP parameters"
+    for PARAM_NAME in \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-config-name" \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-endpoint" \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-auth-mode" \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-api-key" \
+        "/${STACK_PREFIX}/coveo/hosted-mcp-search-hub"; do
+        if ! aws ssm get-parameter \
+            --name "$PARAM_NAME" \
+            --with-decryption \
+            --region "$AWS_REGION" >/dev/null 2>&1; then
+            log_error "  Missing required SSM parameter: $PARAM_NAME"
+            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            COUNTER=$((COUNTER + 1))
+            continue 2
+        fi
+    done
     
     # Grant SSM permissions to agent execution role
     AGENT_ROLE_NAME="${STACK_PREFIX}-agent-execution-role"
@@ -191,10 +171,15 @@ log_info ""
 log_info "Parameters created by this script:"
 log_info "  - /${STACK_PREFIX}/aws-region = $AWS_REGION"
 log_info "  - /${STACK_PREFIX}/coveo/bedrock-model-id = $BEDROCK_MODEL"
-log_info "  - /${STACK_PREFIX}/coveo/mcp-url = https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{encoded-arn}/invocations?qualifier=DEFAULT"
+log_info ""
+log_info "Parameters validated by this script:"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-config-name"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-endpoint"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-auth-mode"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-api-key"
+log_info "  - /${STACK_PREFIX}/coveo/hosted-mcp-search-hub"
 log_info ""
 log_info "Parameters already created by Layer 3 CloudFormation:"
 log_info "  - /${STACK_PREFIX}/coveo/runtime-arn = Agent Runtime ARN (Lambda uses this)"
-log_info "  - /${STACK_PREFIX}/coveo/mcp-runtime-arn = MCP Runtime ARN (Agent uses this)"
 log_info ""
 log_info "Agent Runtime can now start successfully!"

@@ -1,166 +1,326 @@
-# coveo-agent/mcp_adapter.py
-import os
-import json
 import asyncio
+import json
 import logging
+import threading
+import typing as t
 from contextlib import asynccontextmanager
-from datetime import timedelta
-from typing import Any, Dict, Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-import boto3
 from mcp.client.session import ClientSession
-from sigv4_transport import streamablehttp_client_with_sigv4
+from mcp.client.streamable_http import streamablehttp_client
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
+class MCPToolError(Exception):
+    """Raised when the Hosted MCP server returns isError=True."""
+
+    def __init__(self, tool_name: str, message: str) -> None:
+        self.tool_name = tool_name
+        super().__init__(message)
+
+
+TOOL_KEY_TO_CONTROL_KEY = {
+    "answer_tool": "answer",
+    "fetch_tool": "fetch",
+    "passage_tool": "passages",
+    "search_tool": "search",
+}
+
+
 class CoveoMCPAdapter:
     def __init__(
         self,
-        mcp_runtime_arn: Optional[str] = None,
-        region: Optional[str] = None,
-        mcp_url: Optional[str] = None,
+        endpoint: str,
+        auth_mode: str = "anonymous_api_key",
+        api_key: t.Optional[str] = None,
+        region: t.Optional[str] = None,
         sse_read_timeout: int = 300,
         request_timeout: int = 120,
     ) -> None:
-        self.mcp_runtime_arn = mcp_runtime_arn or os.getenv("COVEO_MCP_RUNTIME_ARN")
-        self.region = region or os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-1"
-        self.mcp_url = mcp_url or os.getenv("COVEO_MCP_URL")
+        if not endpoint:
+            raise ValueError("Hosted MCP endpoint is required")
+
+        self.endpoint = endpoint
+        self.auth_mode = auth_mode
+        self.api_key = api_key
+        self.region = region or "us-east-1"
         self._sse_read_timeout = int(sse_read_timeout)
         self._request_timeout = int(request_timeout)
-        self._session_id = None  # For observability correlation
+        self._session_id: t.Optional[str] = None
+        self._controls: dict = {}
+        self._tool_schemas: dict[str, dict] = {}
+        self._tool_schema_lock = threading.Lock()
 
-        # Get AWS credentials for SigV4 authentication
-        session = boto3.Session()
-        self._credentials = session.get_credentials()
-    
-    def set_session_id(self, session_id: str):
-        """Set session ID for observability correlation"""
+    def set_session_id(self, session_id: str) -> None:
         self._session_id = session_id
-    
-    def set_controls(self, controls: Optional[Dict] = None):
-        """Set controls for tool customization"""
+
+    def set_controls(self, controls: t.Optional[dict] = None) -> None:
         self._controls = controls or {}
-    
-    def get_extra(self, tool_key: str) -> Dict:
-        """Get extra parameters for a specific tool"""
-        value = getattr(self, '_controls', {}).get(tool_key)
+
+    def get_extra(self, tool_name: str) -> dict:
+        control_key = TOOL_KEY_TO_CONTROL_KEY.get(tool_name, tool_name)
+        value = self._controls.get(control_key)
         return value if isinstance(value, dict) else {}
 
-    def _build_mcp_url(self) -> str:
-        # https://bedrock-agentcore.<region>.amazonaws.com/runtimes/<encoded-arn>/invocations?qualifier=DEFAULT
-        if not self.mcp_runtime_arn:
-            raise ValueError("mcp_runtime_arn is required when mcp_url is not provided")
-        import urllib.parse
-        encoded = urllib.parse.quote(self.mcp_runtime_arn, safe="")
-        return f"https://bedrock-agentcore.{self.region}.amazonaws.com/runtimes/{encoded}/invocations?qualifier=DEFAULT"
+    def _build_endpoint_url(self) -> str:
+        if self.auth_mode != "anonymous_api_key":
+            raise ValueError(f"Unsupported Hosted MCP auth mode: {self.auth_mode}")
+        if not self.api_key:
+            raise ValueError("Hosted MCP API key is required for anonymous_api_key mode")
+
+        parsed = urlparse(self.endpoint)
+        query_pairs = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        query_pairs["access_token"] = self.api_key
+        return urlunparse(parsed._replace(query=urlencode(query_pairs)))
+
+    def _safe_endpoint_for_logs(self) -> str:
+        parsed = urlparse(self._build_endpoint_url())
+        query_pairs = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        if "access_token" in query_pairs:
+            query_pairs["access_token"] = f"{query_pairs['access_token'][:10]}..."
+        return urlunparse(parsed._replace(query=urlencode(query_pairs)))
 
     @asynccontextmanager
     async def _session(self):
-        """
-        Open a temporary MCP session over Streamable HTTP with SigV4 authentication.
-        Uses AWS SigV4 to authenticate with AgentCore runtime invocation API.
-        """
-        sse_read_timeout = self._sse_read_timeout
-        req_timeout = self._request_timeout
+        url = self._build_endpoint_url()
+        logger.debug("Hosted MCP URL=%s", self._safe_endpoint_for_logs())
 
-        # Build URL (either explicit or from runtime ARN)
-        url = self.mcp_url if self.mcp_url else self._build_mcp_url()
-        
-        logger.debug("MCP URL=%s", url)
-        logger.debug("Using SigV4 authentication for AgentCore API")
-        
-        # Use SigV4 authentication for AgentCore runtime invocation API
-        async with streamablehttp_client_with_sigv4(
+        async with streamablehttp_client(
             url=url,
-            service="bedrock-agentcore",
-            region=self.region,
-            credentials=self._credentials,
-            timeout=req_timeout,
-            sse_read_timeout=sse_read_timeout,
+            timeout=self._request_timeout,
+            sse_read_timeout=self._sse_read_timeout,
             terminate_on_close=False,
-        ) as (r, w, get_session_id):
-            # ClientSession only accepts (read_stream, write_stream) - no other kwargs
-            # The get_session_id callback is for reuse but not passed to ClientSession
-            async with ClientSession(r, w) as session:
+        ) as (read_stream, write_stream, _get_session_id):
+            async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 yield session
 
-    async def _call_tool_async(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        logger.debug("DEBUG: _call_tool_async called: name=%s, arguments=%s", name, arguments)
-        
-        # OBSERVABILITY: Log MCP tool call with session correlation
-        if self._session_id:
-            print(f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_call tool={name}")
-        
-        try:
-            async with self._session() as session:
-                result = await session.call_tool(name, arguments)
-                
-                # OBSERVABILITY: Log MCP tool success
-                if self._session_id:
-                    print(f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_success tool={name}")
-                
-                # Normalize MCP result content to plain text (or JSON string) for the agent
-                items = []
-                for c in getattr(result, "content", []) or []:
-                    if hasattr(c, "text") and c.text is not None:
-                        items.append(c.text)
-                    elif hasattr(c, "json") and c.json is not None:
-                        items.append(json.dumps(c.json))
-                    elif hasattr(c, "type") and c.type == "error":
-                        items.append(f"Error: {getattr(c, 'error', 'unknown error')}")
-                return {"content": "\n".join(items) if items else ""}
-        except Exception as e:
-            # OBSERVABILITY: Log MCP tool error
-            if self._session_id:
-                print(f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_error tool={name} error={type(e).__name__}")
-            
-            logger.error("ERROR: Exception in _call_tool_async for tool %s", name)
-            logger.error("ERROR: Exception type: %s", type(e).__name__)
-            logger.error("ERROR: Exception message: %s", str(e))
-            raise
+    def _json_safe(self, value: t.Any) -> t.Any:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, list):
+            return [self._json_safe(item) for item in value]
+        if isinstance(value, tuple):
+            return [self._json_safe(item) for item in value]
+        if isinstance(value, dict):
+            return {str(key): self._json_safe(item) for key, item in value.items() if not callable(item)}
+        if hasattr(value, "model_dump") and callable(value.model_dump):
+            return self._json_safe(value.model_dump())
+        if hasattr(value, "dict") and callable(value.dict):
+            return self._json_safe(value.dict())
+        return str(value)
 
-    def call_tool(self, name: str, arguments: Dict[str, Any]) -> str:
-        """
-        Sync wrapper called by the Bedrock Agent runtime tool layer.
-        ALWAYS runs in a separate thread to avoid nested event loop issues.
-        """
-        logger.debug("DEBUG: call_tool (sync wrapper) called: name=%s", name)
-        
-        # ALWAYS use a separate thread with its own event loop
-        # This avoids ExceptionGroup errors from nested event loops in AgentCore
-        import threading
-        
-        container: Dict[str, Any] = {}
-        exception_container: Dict[str, Any] = {}
-        
-        def _runner():
+    def _extract_content_payload(self, item: t.Any) -> tuple[bool, t.Any]:
+        for attr in ("structuredContent", "structured_content", "data"):
+            value = getattr(item, attr, None)
+            if value is not None and not callable(value):
+                return True, self._json_safe(value)
+
+        text_value = getattr(item, "text", None)
+        if text_value:
+            try:
+                return True, self._json_safe(json.loads(text_value))
+            except json.JSONDecodeError:
+                return False, text_value
+
+        if isinstance(item, (dict, list, tuple)):
+            return True, self._json_safe(item)
+
+        return True, self._json_safe(item)
+
+    def _normalize_content(self, result: t.Any) -> t.Any:
+        payloads: list[t.Any] = []
+        text_parts: list[str] = []
+
+        for item in getattr(result, "content", []) or []:
+            is_payload, value = self._extract_content_payload(item)
+            if is_payload:
+                payloads.append(value)
+            elif value:
+                text_parts.append(str(value))
+
+        if len(payloads) == 1:
+            return payloads[0]
+        if payloads:
+            return {"items": payloads, "text": "\n".join(text_parts) if text_parts else ""}
+        return {"text": "\n".join(text_parts)} if text_parts else {}
+
+    def _extract_tool_schemas(self, tool_result: t.Any) -> dict[str, dict]:
+        tools = getattr(tool_result, "tools", None) or []
+        schemas: dict[str, dict] = {}
+        names: list[str] = []
+
+        for tool in tools:
+            name = getattr(tool, "name", None)
+            if not name:
+                continue
+            names.append(name)
+            schemas[name] = {
+                "description": getattr(tool, "description", "") or "",
+                "inputSchema": getattr(tool, "inputSchema", None) or getattr(tool, "input_schema", None) or {},
+            }
+
+        logger.info("Discovered Hosted MCP tools: %s", ", ".join(names))
+        return schemas
+
+    async def _discover_tools_async(self) -> dict[str, dict]:
+        async with self._session() as session:
+            tool_result = await session.list_tools()
+            return self._extract_tool_schemas(tool_result)
+
+    def _run_async(self, coro: t.Coroutine[t.Any, t.Any, t.Any]) -> t.Any:
+        container: dict[str, t.Any] = {}
+        exception_container: dict[str, Exception] = {}
+
+        def _runner() -> None:
             loop = asyncio.new_event_loop()
             try:
                 asyncio.set_event_loop(loop)
-                container["result"] = loop.run_until_complete(self._call_tool_async(name, arguments))
-            except Exception as e:
-                exception_container["error"] = e
-                logger.error("ERROR: Exception in thread runner for tool %s", name)
-                logger.error("ERROR: Exception type: %s", type(e).__name__)
-                logger.error("ERROR: Exception message: %s", str(e))
-                import traceback
-                logger.error("ERROR: Traceback:\n%s", traceback.format_exc())
+                container["result"] = loop.run_until_complete(coro)
+            except Exception as exc:
+                exception_container["error"] = exc
             finally:
                 loop.close()
-        
-        t = threading.Thread(target=_runner, daemon=False)
-        t.start()
-        t.join(timeout=self._request_timeout + 10)  # Add buffer to timeout
-        
-        if t.is_alive():
-            logger.error("ERROR: Thread timeout for tool %s", name)
-            return ""
-        
+
+        thread = threading.Thread(target=_runner, daemon=False)
+        thread.start()
+        thread.join(timeout=self._request_timeout + 10)
+
+        if thread.is_alive():
+            raise TimeoutError("Timed out waiting for Hosted MCP response")
         if "error" in exception_container:
-            # Re-raise the exception from the thread
             raise exception_container["error"]
-        
-        return (container.get("result") or {}).get("content", "")
+        return container.get("result")
+
+    def _ensure_tool_schemas(self) -> dict[str, dict]:
+        with self._tool_schema_lock:
+            if not self._tool_schemas:
+                self._tool_schemas = self._run_async(self._discover_tools_async())
+        return self._tool_schemas
+
+    def discover_tools(self) -> dict[str, dict]:
+        return self._ensure_tool_schemas()
+
+    @staticmethod
+    def _pick_schema_key(properties: dict, *candidates: str) -> t.Optional[str]:
+        lower_map = {key.lower(): key for key in properties.keys()}
+        for candidate in candidates:
+            if candidate.lower() in lower_map:
+                return lower_map[candidate.lower()]
+        return None
+
+    def _translate_arguments(self, tool_name: str, arguments: dict[str, t.Any]) -> dict[str, t.Any]:
+        schemas = self._ensure_tool_schemas()
+        schema = schemas.get(tool_name, {}).get("inputSchema", {})
+        properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+        if not properties:
+            return arguments
+
+        translated = dict(arguments)
+        query_key = self._pick_schema_key(properties, "query", "q", "question")
+        top_k_key = self._pick_schema_key(
+            properties,
+            "top_k",
+            "topK",
+            "k",
+            "numberOfResults",
+            "numberOfPassages",
+            "count",
+            "limit",
+            "pageSize",
+        )
+        filter_key = self._pick_schema_key(properties, "filters", "filter")
+        answer_config_key = self._pick_schema_key(properties, "answer_config_id", "answerConfigId", "answerConfigurationId")
+        item_key = self._pick_schema_key(
+            properties,
+            "item_id",
+            "id",
+            "documentId",
+            "permanentid",
+            "permanentId",
+            "uniqueid",
+            "uniqueId",
+            "uri",
+        )
+
+        if "query" in translated and query_key and query_key != "query":
+            translated[query_key] = translated.pop("query")
+        elif "query" in translated and not query_key and len(properties) == 1:
+            only_key = next(iter(properties))
+            translated[only_key] = translated.pop("query")
+
+        if "top_k" in translated:
+            if top_k_key and top_k_key != "top_k":
+                translated[top_k_key] = translated.pop("top_k")
+            elif "top_k" not in properties:
+                translated.pop("top_k")
+
+        if "filters" in translated:
+            if filter_key and filter_key != "filters":
+                translated[filter_key] = translated.pop("filters")
+            elif "filters" not in properties:
+                translated.pop("filters")
+
+        if "answer_config_id" in translated:
+            if answer_config_key and answer_config_key != "answer_config_id":
+                translated[answer_config_key] = translated.pop("answer_config_id")
+            elif "answer_config_id" not in properties:
+                translated.pop("answer_config_id")
+
+        if "item_id" in translated:
+            if item_key and item_key != "item_id":
+                translated[item_key] = translated.pop("item_id")
+            elif not item_key and len(properties) == 1:
+                only_key = next(iter(properties))
+                translated[only_key] = translated.pop("item_id")
+            elif "item_id" not in properties:
+                translated.pop("item_id")
+
+        allowed_keys = set(properties.keys())
+        return {key: value for key, value in translated.items() if key in allowed_keys}
+
+    async def _call_tool_async(self, name: str, arguments: dict[str, t.Any]) -> t.Any:
+        logger.debug("Hosted MCP call: tool=%s arguments=%s", name, arguments)
+
+        if self._session_id:
+            print(f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_call tool={name}")
+
+        translated_arguments = self._translate_arguments(name, arguments)
+        logger.debug("Hosted MCP translated args: tool=%s arguments=%s", name, translated_arguments)
+
+        try:
+            async with self._session() as session:
+                result = await session.call_tool(name, translated_arguments)
+
+                is_error = getattr(result, "isError", False) or getattr(result, "is_error", False)
+                if is_error:
+                    error_text = ""
+                    for item in getattr(result, "content", []) or []:
+                        text_value = getattr(item, "text", None)
+                        if text_value:
+                            error_text = text_value
+                            break
+                    if self._session_id:
+                        print(
+                            f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_error "
+                            f"tool={name} error=MCPToolError message={error_text[:200]}"
+                        )
+                    logger.error("Hosted MCP tool %s returned isError=True: %s", name, error_text)
+                    raise MCPToolError(name, error_text or f"Tool {name} returned an error")
+
+                if self._session_id:
+                    print(f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_success tool={name}")
+                return self._normalize_content(result)
+        except Exception as exc:
+            if self._session_id:
+                print(
+                    f"OBSERVABILITY session_id={self._session_id} event=mcp_tool_error "
+                    f"tool={name} error={type(exc).__name__}"
+                )
+            logger.error("Hosted MCP tool call failed for %s: %s", name, exc)
+            raise
+
+    def call_tool(self, name: str, arguments: dict[str, t.Any]) -> t.Any:
+        return self._run_async(self._call_tool_async(name, arguments))

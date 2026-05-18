@@ -13,12 +13,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
-# Env: model, region, MCP runtime
+# Env: model, region, Hosted MCP configuration is loaded from SSM at runtime
 ENV AWS_REGION=us-east-1
 ENV BEDROCK_MODEL_ID=us.amazon.nova-lite-v1:0
-# One of these must be set at deploy time:
-# ENV COVEO_MCP_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-west-2:123456789:runtime/coveo-mcp-xyz
-# ENV COVEO_MCP_URL=http://localhost:8000/mcp
 
 EXPOSE 8080
 

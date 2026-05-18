@@ -1,11 +1,13 @@
 import axios from 'axios';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3003';
+const DEFAULT_API_TIMEOUT_MS = 30000;
+const AGENT_CHAT_TIMEOUT_MS = 90000;
 
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 30000,
+  timeout: DEFAULT_API_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -121,15 +123,17 @@ export const chatAPI = async (message, sessionId, backendMode = 'coveo', memoryI
     // No need to pass it from frontend
     // (keeping parameter for backward compatibility)
     
-    // Add endSession flag to finalize and summarize session (for bedrockAgent and coveoMCP)
-    if (endSession && (backendMode === 'bedrockAgent' || backendMode === 'coveoMCP')) {
+    // Add endSession flag to finalize and summarize an AgentCore session
+    if (endSession && backendMode === 'coveoMCP') {
       requestBody.endSession = true;
     }
     
-    const response = await api.post('/api/chat', requestBody);
+    const response = await api.post('/api/chat', requestBody, {
+      timeout: backendMode === 'coveoMCP' ? AGENT_CHAT_TIMEOUT_MS : DEFAULT_API_TIMEOUT_MS,
+    });
     return response.data;
   } catch (error) {
-    throw new Error(`Chat failed: ${error.response?.data?.error || error.message}`);
+    throw new Error(`Chat failed: ${error.response?.data?.message || error.response?.data?.error || error.message}`);
   }
 };
 

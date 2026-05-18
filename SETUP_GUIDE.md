@@ -1,5 +1,7 @@
 # AWS Coveo Workshop - Setup Guide
 
+> This guide reflects the refreshed workshop target state: Coveo Hosted MCP for Lab 3 and Amazon ECS Express Mode for the UI.
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -75,6 +77,16 @@ COVEO_SEARCH_API_KEY=xx00000000-0000-0000-0000-000000000000
 # Coveo Answer Configuration ID
 COVEO_ANSWER_CONFIG_ID=00000000-0000-0000-0000-000000000000
 
+# Hosted MCP configuration
+COVEO_HOSTED_MCP_CONFIG_NAME=Workshop-MCP-server
+COVEO_HOSTED_MCP_ENDPOINT=https://platform.cloud.coveo.com/api/preview/organizations/awsworkshopthsskpki/mcp/server/f9552f36-24e1-47b6-8c55-d6fe87553c61
+COVEO_HOSTED_MCP_AUTH_MODE=anonymous_api_key
+COVEO_HOSTED_MCP_API_KEY=xx00000000-0000-0000-0000-000000000000
+COVEO_HOSTED_MCP_SEARCH_HUB=MCP_Workshop-MCP-server
+
+# Workshop query pipeline
+COVEO_SEARCH_PIPELINE=aws-workshop-pipeline
+
 # ============================================================================
 # Test User Configuration (OPTIONAL)
 # ============================================================================
@@ -110,14 +122,14 @@ bash scripts/stacksets/deploy-all-stacksets.sh
 
 This will:
 1. ✅ Setup master account ECR repositories
-2. ✅ Build and push Docker images (MCP Server, Agent, UI)
+2. ✅ Build and push Docker images (Agent, UI)
 3. ✅ Create shared Lambda layer
 4. ✅ Package Lambda functions
 5. ✅ Deploy Layer 1 (Prerequisites) to all accounts
 6. ✅ Setup S3 cross-account replication
 7. ✅ Deploy Layer 2 (Core Infrastructure)
-8. ✅ Deploy Layer 3 (AI Services - AgentCore Runtimes)
-9. ✅ Deploy Layer 4 (UI - App Runner)
+8. ✅ Deploy Layer 3 (AI Services - Bedrock Agent, AgentCore Runtime, Hosted MCP config wiring)
+9. ✅ Deploy Layer 4 (UI - ECS Express Mode)
 10. ✅ Configure Cognito and collect deployment info
 
 **Estimated Time**: 45-60 minutes
@@ -233,15 +245,15 @@ If you encounter issues:
 ## ✨ What Gets Deployed
 
 ### Master Account
-- ECR repositories (MCP Server, Agent, UI images)
+- ECR repositories (Agent, UI images)
 - S3 bucket (Lambda packages, CloudFormation templates)
 - Lambda Layer (shared dependencies)
 
 ### Child Accounts (via StackSets)
-- **Layer 1**: S3 buckets, ECR repositories, IAM roles
+- **Layer 1**: S3 buckets, IAM roles
 - **Layer 2**: Lambda functions, API Gateway, Cognito
-- **Layer 3**: Bedrock AgentCore Runtimes (Agent, MCP)
-- **Layer 4**: App Runner services (UI)
+- **Layer 3**: Bedrock Agent, AgentCore Runtime, AgentCore Memory
+- **Layer 4**: ECS Express Mode service (UI)
 
 ### Observability
 - X-Ray tracing with session correlation

@@ -10,7 +10,7 @@ This page provides detailed architectural information for the Direct Coveo Integ
 %%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#e8f5e9','primaryTextColor':'#000','primaryBorderColor':'#4caf50','lineColor':'#4caf50','secondaryColor':'#e3f2fd','tertiaryColor':'#fff3e0'}}}%%
 graph TB
     subgraph Frontend["🖥️ Frontend Layer"]
-        UI[React Search UI<br/>App Runner<br/>Port 3003]
+        UI[React Search UI<br/>ECS Express<br/>Port 3003]
     end
     
     subgraph API["🔐 API Layer"]
@@ -59,7 +59,7 @@ graph TB
 
 #### Frontend Layer
 
-- **React Search UI**: Single-page application hosted on AWS App Runner
+- **React Search UI**: Single-page application hosted on Amazon ECS Express Mode
 - **Authentication**: Cognito-based user authentication with JWT tokens
 - **Responsive Design**: Works on desktop and mobile devices
 - **Real-time Updates**: Dynamic result rendering without page refresh
@@ -339,7 +339,7 @@ except Exception as e:
 
 - **Lambda**: Pay per request and execution time (~$0.20 per million requests)
 - **API Gateway**: Pay per API call (~$1.00 per million requests)
-- **App Runner**: Pay for running time and requests (~$0.064 per vCPU-hour)
+- **ECS Express Mode**: Pay for underlying Fargate, ALB, logs, and data transfer
 - **Coveo**: Usage-based pricing for API calls
 
 ---
@@ -437,6 +437,6 @@ graph LR
 - [AWS Lambda](https://docs.aws.amazon.com/lambda/)
 - [Amazon API Gateway](https://docs.aws.amazon.com/apigateway/)
 - [Amazon Cognito](https://docs.aws.amazon.com/cognito/)
-- [AWS App Runner](https://docs.aws.amazon.com/apprunner/)
+- [Amazon ECS Express Mode](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-overview.html)
 
 ---

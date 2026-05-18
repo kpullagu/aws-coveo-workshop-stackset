@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Test Observability Implementation
-# This script tests the observability features across Lambda, Agent Runtime, and MCP Runtime
+# This script tests the observability features across Lambda and the Hosted MCP-backed Agent Runtime
 #
 
 set -e
@@ -57,9 +57,9 @@ echo ""
 log_info "Invoking Lambda with test query..."
 PAYLOAD=$(cat <<EOF
 {
-  "session_id": "$SESSION_ID",
-  "actor_id": "test-user",
-  "text": "What is ACH payment?"
+  "httpMethod": "POST",
+  "path": "/agentcore",
+  "body": "{\"backend\":\"coveoMCP\",\"sessionId\":\"$SESSION_ID\",\"actor_id\":\"test-user\",\"question\":\"What is ACH payment?\"}"
 }
 EOF
 )
@@ -114,43 +114,30 @@ fi
 echo ""
 
 # Check Agent Runtime logs
-AGENT_LOG_GROUP="/aws/bedrock-agentcore/agent-runtime"
+AGENT_LOG_GROUP=$(aws logs describe-log-groups \
+    --region "$AWS_REGION" \
+    --log-group-name-prefix "/aws/bedrock/agentcore/" \
+    --query "logGroups[0].logGroupName" \
+    --output text 2>/dev/null || echo "")
+
 log_info "Agent Runtime Log Group: $AGENT_LOG_GROUP"
 
-AGENT_LOGS=$(aws logs filter-log-events \
-    --region "$AWS_REGION" \
-    --log-group-name "$AGENT_LOG_GROUP" \
-    --filter-pattern "$SESSION_ID" \
-    --start-time $(($(date +%s) * 1000 - 300000)) \
-    --query 'events[*].message' \
-    --output text 2>/dev/null || echo "")
+AGENT_LOGS=""
+if [ -n "$AGENT_LOG_GROUP" ] && [ "$AGENT_LOG_GROUP" != "None" ]; then
+    AGENT_LOGS=$(aws logs filter-log-events \
+        --region "$AWS_REGION" \
+        --log-group-name "$AGENT_LOG_GROUP" \
+        --filter-pattern "$SESSION_ID" \
+        --start-time $(($(date +%s) * 1000 - 300000)) \
+        --query 'events[*].message' \
+        --output text 2>/dev/null || echo "")
+fi
 
 if [ -n "$AGENT_LOGS" ]; then
     log_success "✓ Found Agent Runtime logs with session ID"
     echo "$AGENT_LOGS" | grep "OBSERVABILITY" || echo "No OBSERVABILITY markers found"
 else
     log_warning "No Agent Runtime logs found with session ID"
-fi
-
-echo ""
-
-# Check MCP Runtime logs
-MCP_LOG_GROUP="/aws/bedrock-agentcore/mcp-runtime"
-log_info "MCP Runtime Log Group: $MCP_LOG_GROUP"
-
-MCP_LOGS=$(aws logs filter-log-events \
-    --region "$AWS_REGION" \
-    --log-group-name "$MCP_LOG_GROUP" \
-    --filter-pattern "$SESSION_ID" \
-    --start-time $(($(date +%s) * 1000 - 300000)) \
-    --query 'events[*].message' \
-    --output text 2>/dev/null || echo "")
-
-if [ -n "$MCP_LOGS" ]; then
-    log_success "✓ Found MCP Runtime logs with session ID"
-    echo "$MCP_LOGS" | grep "OBSERVABILITY" || echo "No OBSERVABILITY markers found"
-else
-    log_warning "No MCP Runtime logs found with session ID"
 fi
 
 echo ""
