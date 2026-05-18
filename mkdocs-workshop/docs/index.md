@@ -43,7 +43,7 @@ Understand when to use direct Coveo APIs, when to use AWS AgentCore with Coveo H
 
 **Workshop Architecture at a glance**
 
-![Workshop Architecture at a glance](../images/Workshop Architecture at a glance.png)
+![Workshop Architecture at a glance](../images/Workshop-Architecture.png)
 
 ## Important Positioning
 
