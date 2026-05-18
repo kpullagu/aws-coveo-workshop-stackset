@@ -40,51 +40,53 @@ graph TB
 ## Exercise 2.1: Review AgentCore Runtime
 
 1. Log in to the AWS Console.
+
 2. Navigate to **Amazon Bedrock AgentCore**.
-  **Bedrock AgentCore Navigation**
 
-  ![Agentcore Navigation](../images/AgentCore-Navigation-new-1.png)
+    **Bedrock AgentCore Navigation**
 
-  Select Amazon Bedrock AgentCore to go to the Amazon Bedrock AgentCore service page.
+    ![Agentcore Navigation](../images/AgentCore-Navigation-new-1.png)
+
+    Select Amazon Bedrock AgentCore to go to the Amazon Bedrock AgentCore service page.
 
 3. Open **Agent Runtime**.
 
-  **Runtime Navigation**
+    **Runtime Navigation**
 
-  ![Runtime Navigation](../images/AgentCore-Navigation-new-2.png)
+    ![Runtime Navigation](../images/AgentCore-Navigation-new-2.png)
 
-  Select **Runtime** to view the `workshop_CoveoAgent` runtime page.
+    Select **Runtime** to view the `workshop_CoveoAgent` runtime page.
 
 4. Select the workshop runtime.
 
-  **Runtime Selection**
+    **Runtime Selection**
 
-  ![Runtime Selection](../images/AgentCore-Navigation-new-3.png)
+    ![Runtime Selection](../images/AgentCore-Navigation-new-3.png)
 
-  Click `workshop_CoveoAgent` to open the runtime details page.
+    Click `workshop_CoveoAgent` to open the runtime details page.
 
 5. Confirm that the runtime is deployed and active.
 
-  **Runtime Details**
+    **Runtime Details**
 
-  ![Runtime Details](../images/AgentCore-Navigation-new-4.png)
+    ![Runtime Details](../images/AgentCore-Navigation-new-4.png)
 
-  Click `workshop_CoveoAgent` to view the runtime details page.
+    Click `workshop_CoveoAgent` to view the runtime details page.
 
-What to observe:
+    What to observe:
 
-- The Status is 'Ready'.
-- The runtime ARN.
-- Memory is associated with the runtime so conversations can continue across turns and sessions.
+    - The Status is 'Ready'.
+    - The runtime ARN.
+    - Memory is associated with the runtime so conversations can continue across turns and sessions.
 
 6. Confirm that the memory is deployed and active.
 
-  **Memory Details**
+    **Memory Details**
 
-  ![Memory Navigation](../images/AgentCore-Navigation-new-5.png)
+    ![Memory Navigation](../images/AgentCore-Navigation-new-5.png)
 
-  Select **Memory** to view the `workshop_CoveoAgent_Memory-xxxxxxxxxx` page.
-  Verify that the Memory status is **Active**.
+    Select **Memory** to view the `workshop_CoveoAgent_Memory-xxxxxxxxxx` page.
+    Verify that the Memory status is **Active**.
 
 
 ## Exercise 2.2: Review Coveo Hosted MCP Configuration
@@ -143,9 +145,6 @@ Why this matters:
 
 Confirm values match your Coveo Hosted MCP server configuration.
 
-### Optional Log Verification
-
-In CloudWatch logs for `workshop_CoveoAgent`, verify MCP tool call events appear for chat turns (for example, search/answer tool invocations).
 
 
 ## Exercise 2.3: Test The Chatbot
