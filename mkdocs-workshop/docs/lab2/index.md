@@ -17,16 +17,11 @@ By the end of this lab, you will:
 - Test browser-refresh continuity with the same session ID.
 - End a session, start a new one, and test cross-session recall.
 
-## What This Lab Is Not
-
-This lab does not use the retired Bedrock Agent passage-tool pattern. The live workshop focuses on AgentCore + Hosted MCP as the AWS agent pattern.
-
 ## Architecture
 
 ```mermaid
 graph TB
     UI[Workshop UI Chatbot]
-    BFF[Express BFF]
     API[API Gateway]
     LAMBDA[AgentCore Runtime Lambda]
     RUNTIME[AgentCore Runtime]
@@ -34,8 +29,7 @@ graph TB
     MCP[Coveo Hosted MCP]
     COVEO[Coveo Platform]
 
-    UI --> BFF
-    BFF --> API
+    UI --> API
     API --> LAMBDA
     LAMBDA --> RUNTIME
     RUNTIME <--> MEMORY
@@ -47,21 +41,70 @@ graph TB
 
 1. Log in to the AWS Console.
 2. Navigate to **Amazon Bedrock AgentCore**.
+
+**Bedrock AgentCore Navigation**
+
+![Agentcore Navigation](../images/AgentCore-Navigation-new-1.png)
+Select Amazon Bedrock Agentcore to go to the Amazon Bedrock Agentcore Service page.
+
 3. Open **Agent Runtime**.
+
+**Runtime Navigation**
+
+![Runtime Navigation](../images/AgentCore-Navigation-new-2.png)
+Select 'Runtime' to view the 'workshop_CoveoAgent' runtime page.
+
 4. Select the workshop runtime.
+
+**Runtime Selection**
+
+![Runtime Selection](../images/AgentCore-Navigation-new-3.png)
+Click 'workshop_CoveoAgent' to view the Agent details page. 
+
 5. Confirm that the runtime is deployed and active.
+
+**Runtime Details**
+
+![Runtime Details](../images/AgentCore-Navigation-new-4.png)
+Click 'workshop_CoveoAgent' to view the Agent details page. 
 
 What to observe:
 
-- The runtime hosts the workshop agent container.
-- The runtime invokes Coveo Hosted MCP tools.
+- The Status is 'Ready'.
+- The runtime ARN.
 - Memory is associated with the runtime so conversations can continue across turns and sessions.
+
+6. Confirm that the memory is deployed and active.
+
+**Memory Details**
+
+![Memory Navigation](../images/AgentCore-Navigation-new-5.png)
+Select 'Memory' to view the 'workshop_CoveoAgent_Memory-xxxxxxxxxx' page.
+Verify that the Memoyy Status is 'active'.
+
 
 ## Exercise 2.2: Review Coveo Hosted MCP Configuration
 
 Your instructor will review the Hosted MCP configuration in the Coveo Administration Console.
 
-Expected workshop configuration:
+1. MCP Server Configuration in Coveo Platform Console.
+
+![MCP Server Details](../images/AgentCore-Navigation-new-5.5.png)
+
+2. MCP Server Config and Endpoint in Coveo Platform Console.
+
+![MCP Server Config](../images/AgentCore-Navigation-new-6.png)
+
+3. MCP Server Tools in Coveo Platform Console.
+
+![MCP Server Tools](../images/AgentCore-Navigation-new-7.png)
+
+4. MCP Server Instructions in Coveo Platform Console.
+
+![MCP Server Instructions](../images/AgentCore-Navigation-new-8.png)
+
+
+Expected workshop MCP server configuration:
 
 | Setting | Value |
 |---|---|
@@ -69,6 +112,41 @@ Expected workshop configuration:
 | Search hub | `MCP_Workshop-MCP-server` |
 | Query pipeline | `MCP-Pipeline` |
 | Tooling | Search, Fetch, Answer, Passage Retrieval |
+
+## How The Runtime Knows Which Hosted MCP Endpoint To Use
+
+In this workshop, `workshop_CoveoAgent` does not hardcode the Coveo MCP URL.
+It resolves the endpoint at runtime from AWS Systems Manager Parameter Store.
+
+High-level flow:
+
+1. Deployment scripts seed Hosted MCP values into SSM parameters (for example: endpoint URL, auth mode, API key, config name, search hub).
+2. The AgentCore runtime container reads `/workshop/coveo/hosted-mcp-endpoint` (and related Hosted MCP parameters) from SSM.
+4. The runtime initializes the MCP client with those values and then invokes Hosted MCP tools (`search`, `fetch`, `answer`, `passage`) during chat turns.
+
+Why this matters:
+
+- You can rotate or update MCP endpoint/auth settings in SSM without rebuilding the runtime image.
+- The same runtime code can be reused across environments by changing only parameter values.
+
+## How To Verify In Console
+
+### In AWS Console
+
+1. Open **Systems Manager** -> **Parameter Store**.
+2. Search for parameters under your workshop prefix:
+    - `/workshop/coveo/hosted-mcp-endpoint`    
+3. You can use this direct link to check the hosted MCP endpoint configuation in SSM parameter store.
+    - https://us-east-1.console.aws.amazon.com/systems-manager/parameters/%252Fworkshop%252Fcoveo%252Fhosted-mcp-config-name/description?region=us-east-1&tab=Table
+
+![Coveo Hosted MCP Endpoint](../images/AgentCore-Navigation-new-9.png)
+
+Confirm values match your Coveo Hosted MCP server configuration.
+
+### Optional Log Verification
+
+In CloudWatch logs for `workshop_CoveoAgent`, verify MCP tool call events appear for chat turns (for example, search/answer tool invocations).
+
 
 ## Exercise 2.3: Test The Chatbot
 
@@ -152,4 +230,10 @@ You tested the AgentCore + Coveo Hosted MCP pattern:
 - Same-session recall depends on stable `sessionId`.
 - Cross-session recall depends on stable Cognito identity and finalized/summarized sessions.
 
-Continue to [Lab 3: Native Coveo Search Agent with Headless](../lab3/index.md).
+<div style="text-align: center; margin: 3rem 0;">
+  <a href="../lab3/" class="md-button md-button--primary" style="font-size: 1.1rem; padding: 1rem 2rem;">
+    Lab 3: Native Coveo Search Agent with Headless →
+  </a>
+</div>
+
+In Lab 3, you'll use Coveo Native Search Agent to generate summary response to users question and followups without any third party integrations.

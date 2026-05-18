@@ -33,23 +33,21 @@ Understand when to use direct Coveo APIs, when to use AWS AgentCore with Coveo H
 
 | Segment | Duration |
 |---|---:|
-| Introduction and setup | 15 min |
+| Introduction and setup | 30 min |
 | Lab 1: Coveo Direct APIs | 20 min |
 | Lab 2: AgentCore + Hosted MCP Chatbot | 25 min |
 | Lab 3: Native Coveo Search Agent | 25 min |
-| Discussion and Q&A | 15 min |
+| Discussion and Q&A | 20 min |
 
-## Architecture At A Glance
-
-**Workshop Architecture at a glance**
+## Architecture
 
 ![Workshop Architecture at a glance](images/Workshop-Architecture.png)
 
 ## Important Positioning
 
 - **Lab 1** shows the raw Coveo building blocks.
-- **Lab 2** shows when AWS AgentCore is useful: agent orchestration, Hosted MCP tools, and memory-enabled sessions.
-- **Lab 3** shows the simplest native conversational search path: Coveo Search Agent with Headless follow-ups and citations.
+- **Lab 2** shows when AWS Bedrock AgentCore is useful: agent orchestration, Hosted MCP tools, and memory-enabled sessions.
+- **Lab 3** shows the simplest native Coveo conversational search path: Coveo Search Agent with Headless follow-ups and citations.
 
 
 ## Prerequisites
