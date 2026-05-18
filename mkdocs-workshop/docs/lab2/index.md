@@ -41,32 +41,35 @@ graph TB
 
 1. Log in to the AWS Console.
 2. Navigate to **Amazon Bedrock AgentCore**.
+  **Bedrock AgentCore Navigation**
 
-**Bedrock AgentCore Navigation**
+  ![Agentcore Navigation](../images/AgentCore-Navigation-new-1.png)
 
-![Agentcore Navigation](../images/AgentCore-Navigation-new-1.png)
-Select Amazon Bedrock Agentcore to go to the Amazon Bedrock Agentcore Service page.
+  Select Amazon Bedrock AgentCore to go to the Amazon Bedrock AgentCore service page.
 
 3. Open **Agent Runtime**.
 
-**Runtime Navigation**
+  **Runtime Navigation**
 
-![Runtime Navigation](../images/AgentCore-Navigation-new-2.png)
-Select 'Runtime' to view the 'workshop_CoveoAgent' runtime page.
+  ![Runtime Navigation](../images/AgentCore-Navigation-new-2.png)
+
+  Select **Runtime** to view the `workshop_CoveoAgent` runtime page.
 
 4. Select the workshop runtime.
 
-**Runtime Selection**
+  **Runtime Selection**
 
-![Runtime Selection](../images/AgentCore-Navigation-new-3.png)
-Click 'workshop_CoveoAgent' to view the Agent details page. 
+  ![Runtime Selection](../images/AgentCore-Navigation-new-3.png)
+
+  Click `workshop_CoveoAgent` to open the runtime details page.
 
 5. Confirm that the runtime is deployed and active.
 
-**Runtime Details**
+  **Runtime Details**
 
-![Runtime Details](../images/AgentCore-Navigation-new-4.png)
-Click 'workshop_CoveoAgent' to view the Agent details page. 
+  ![Runtime Details](../images/AgentCore-Navigation-new-4.png)
+
+  Click `workshop_CoveoAgent` to view the runtime details page.
 
 What to observe:
 
@@ -76,11 +79,12 @@ What to observe:
 
 6. Confirm that the memory is deployed and active.
 
-**Memory Details**
+  **Memory Details**
 
-![Memory Navigation](../images/AgentCore-Navigation-new-5.png)
-Select 'Memory' to view the 'workshop_CoveoAgent_Memory-xxxxxxxxxx' page.
-Verify that the Memoyy Status is 'active'.
+  ![Memory Navigation](../images/AgentCore-Navigation-new-5.png)
+
+  Select **Memory** to view the `workshop_CoveoAgent_Memory-xxxxxxxxxx` page.
+  Verify that the Memory status is **Active**.
 
 
 ## Exercise 2.2: Review Coveo Hosted MCP Configuration
@@ -88,20 +92,16 @@ Verify that the Memoyy Status is 'active'.
 Your instructor will review the Hosted MCP configuration in the Coveo Administration Console.
 
 1. MCP Server Configuration in Coveo Platform Console.
-
-![MCP Server Details](../images/AgentCore-Navigation-new-5.5.png)
+  ![MCP Server Details](../images/AgentCore-Navigation-new-5.5.png)
 
 2. MCP Server Config and Endpoint in Coveo Platform Console.
-
-![MCP Server Config](../images/AgentCore-Navigation-new-6.png)
+  ![MCP Server Config](../images/AgentCore-Navigation-new-6.png)
 
 3. MCP Server Tools in Coveo Platform Console.
-
-![MCP Server Tools](../images/AgentCore-Navigation-new-7.png)
+  ![MCP Server Tools](../images/AgentCore-Navigation-new-7.png)
 
 4. MCP Server Instructions in Coveo Platform Console.
-
-![MCP Server Instructions](../images/AgentCore-Navigation-new-8.png)
+  ![MCP Server Instructions](../images/AgentCore-Navigation-new-8.png)
 
 
 Expected workshop MCP server configuration:
@@ -122,7 +122,7 @@ High-level flow:
 
 1. Deployment scripts seed Hosted MCP values into SSM parameters (for example: endpoint URL, auth mode, API key, config name, search hub).
 2. The AgentCore runtime container reads `/workshop/coveo/hosted-mcp-endpoint` (and related Hosted MCP parameters) from SSM.
-4. The runtime initializes the MCP client with those values and then invokes Hosted MCP tools (`search`, `fetch`, `answer`, `passage`) during chat turns.
+3. The runtime initializes the MCP client with those values and then invokes Hosted MCP tools (`search`, `fetch`, `answer`, `passage`) during chat turns.
 
 Why this matters:
 
@@ -136,8 +136,8 @@ Why this matters:
 1. Open **Systems Manager** -> **Parameter Store**.
 2. Search for parameters under your workshop prefix:
     - `/workshop/coveo/hosted-mcp-endpoint`    
-3. You can use this direct link to check the hosted MCP endpoint configuation in SSM parameter store.
-    - https://us-east-1.console.aws.amazon.com/systems-manager/parameters/%252Fworkshop%252Fcoveo%252Fhosted-mcp-config-name/description?region=us-east-1&tab=Table
+3. You can use this direct link to check the hosted MCP endpoint configuration in SSM Parameter Store:
+  - [Open /workshop/coveo/hosted-mcp-config-name in Parameter Store](https://us-east-1.console.aws.amazon.com/systems-manager/parameters/%252Fworkshop%252Fcoveo%252Fhosted-mcp-config-name/description?region=us-east-1&tab=Table)
 
 ![Coveo Hosted MCP Endpoint](../images/AgentCore-Navigation-new-9.png)
 
