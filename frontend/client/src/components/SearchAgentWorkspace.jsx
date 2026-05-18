@@ -162,6 +162,7 @@ const TurnCard = styled.div`
   border: 1px solid rgba(31, 39, 71, 0.08);
   border-radius: 16px;
   box-shadow: ${props => props.$active ? '0 12px 30px rgba(28, 35, 71, 0.08)' : 'none'};
+  min-width: 0;
   overflow: hidden;
 `;
 
@@ -181,6 +182,13 @@ const QuestionButton = styled.button`
   text-align: left;
   width: 100%;
 
+  span {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   &:hover {
     background: ${props => props.$collapsible ? '#f7f8fb' : 'transparent'};
   }
@@ -190,6 +198,7 @@ const AnswerArea = styled.div`
   border-top: 1px solid rgba(31, 39, 71, 0.08);
   display: grid;
   gap: 14px;
+  min-width: 0;
   padding: 16px;
 `;
 
@@ -198,6 +207,22 @@ const AnswerBody = styled.div`
   display: grid;
   gap: 12px;
   line-height: 1.7;
+  min-width: 0;
+
+  p, li, a, blockquote {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  pre, code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  pre {
+    white-space: pre-wrap;
+  }
 
   p, ul, ol {
     margin: 0;
@@ -215,6 +240,7 @@ const AnswerBody = styled.div`
 
 const Actions = styled.div`
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
 `;
